@@ -45,7 +45,7 @@ Mandatory opening/closing and Vietnamese report:
 ## Task / milestone ledger
 | ID | Status | Evidence / starting condition |
 |---|---|---|
-| [T000](tasks/T000_REPOSITORY_ONBOARDING.md) | Completed — local baseline and handoff | Linked session; initial commit subject `chore: establish Denlyra synthetic baseline [T000]`; resolve final commit/push via Git |
+| [T000](tasks/T000_REPOSITORY_ONBOARDING.md) | Completed — local baseline and handoff | Linked session; initial baseline commit `d8d7c44` pushed and remote SHA verified; latest documentation receipt via Git |
 | [T001](tasks/T001_HARDEN_IDENTITY.md) | **Next / pending; not started** | Read packet, define identity ADR and permission matrix; negative tests before auth changes |
 | [T002](tasks/T002_POSTGRES_BOOKING.md) | Pending | Isolated synthetic PostgreSQL server/driver; reviewed migration and race harness |
 | T003 / T004 | Blocked for clinical implementation | Named dentist + counsel, official source/form/signer review; synthetic interfaces only |
@@ -131,9 +131,13 @@ No human confirmation is needed to resume authorized synthetic T001 preparation.
 Initial branch `main`, no prior commits or tracked files; origin
 `https://github.com/quangkhai5122/Denlyra.git` had no advertised refs at onboarding.
 The owner authorized initial commit and normal push. No deployment is authorized.
-The final commit/push outcome is authoritative in Git, not a self-referential hash here:
+Initial baseline commit **`d8d7c449f0c51c80162680beb7a38f4e43c17094`**, subject
+`chore: establish Denlyra synthetic baseline [T000]`, was pushed successfully with
+`git push -u origin main`; local/remote main SHA matched and worktree was clean.
+This later documentation receipt records that observed outcome; it is committed separately.
+Remote CI results have not been inspected. Current HEAD/push state remain authoritative in Git:
 `git log -1 --format=fuller`, `git status --short --branch`,
-`git ls-remote origin refs/heads/main`. Match commit subject `[T000]` and local/remote SHA.
+`git ls-remote origin refs/heads/main`. Compare local/remote SHA for the latest receipt.
 
 Next session begins with those commands and AGENTS/this file/latest report/T001/relevant
 ADRs. Then run `.venv/Scripts/python.exe -m pytest backend/tests -q` on Windows and
