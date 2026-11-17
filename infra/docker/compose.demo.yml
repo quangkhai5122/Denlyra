@@ -1,0 +1,18 @@
+# Demonstration only: credentials and ports below are NOT production settings.
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: denlyra_demo
+      POSTGRES_PASSWORD: DEMO_ONLY_CHANGE_ME
+      POSTGRES_DB: denlyra_demo
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - denlyra_demo_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U denlyra_demo -d denlyra_demo"]
+      interval: 5s
+      retries: 15
+volumes:
+  denlyra_demo_pg:

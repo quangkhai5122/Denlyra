@@ -1,0 +1,55 @@
+name: denlyra-research-demo-ci
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  synthetic-demo-tests:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install synthetic demo dependencies
+        run: python -m pip install -c backend/constraints-baseline.txt -e './backend[dev]'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Test no-PHI demo domain
+        run: python -m pytest backend/tests -q
+      - name: Smoke-check CLI and disposable SQLite migration
+        run: python scripts/smoke_baseline.py
+      - name: Syntax-check backend
+        run: python -m compileall -q backend/src
+      - name: Syntax-check demo browser code
+        run: node --check apps/demo-web/app.js
+      - name: Lint Python
+        run: python -m ruff check backend/src backend/tests
+      - name: Lint baseline utilities
+        run: python -m ruff check --config backend/pyproject.toml scripts/smoke_baseline.py scripts/update_manifest.py scripts/verify_artifact.py
+      - name: Verify capability safety labels
+        run: python scripts/verify_artifact.py
+      - name: Verify source manifest
+        run: python scripts/update_manifest.py --check
+
+  next-prototype-build:
+    runs-on: ubuntu-latest
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
+    defaults:
+      run:
+        working-directory: apps/clinic-web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: apps/clinic-web/package-lock.json
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npm run typecheck
+      - run: npm run build
+      - run: npm audit --audit-level=moderate
