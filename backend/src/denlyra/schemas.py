@@ -106,32 +106,137 @@ class PlanReassessmentCreate(BaseModel):
 class LabCaseCreate(BaseModel):
     patient_id: str
     title: str = Field(min_length=2, max_length=180)
+    specification_demo: str = Field(default="", max_length=2000)
+    due_on: datetime | None = None
+    file_references: list[str] = Field(default_factory=list, max_length=20)
+
+    @model_validator(mode="after")
+    def check_due_on_tz(self):
+        if self.due_on is not None and not self.due_on.tzinfo:
+            raise ValueError("due_on must be a timezone-aware RFC3339 timestamp")
+        return self
 
 
 class LabStateUpdate(BaseModel):
     next_status: str
 
 
+class LabPartnerGrantCreate(BaseModel):
+    partner_name: str = Field(min_length=2, max_length=160)
+    ttl_seconds: int = Field(default=3600, ge=-3600, le=604800)
+
+
+class LabPartnerMilestoneUpdate(BaseModel):
+    next_status: str
+    partner_note: str = Field(default="", max_length=260)
+
+
+class LabReceiveRequest(BaseModel):
+    condition: str = Field(min_length=2, max_length=200)
+
+
+class LabRemakeCreate(BaseModel):
+    reason: str = Field(min_length=3, max_length=260)
+    specification_demo: str = Field(min_length=2, max_length=2000)
+    due_on: datetime | None = None
+
+
+class ConsentCreate(BaseModel):
+    patient_id: str
+    purpose: Literal["treatment", "data_processing", "marketing", "financial"]
+    template_version: str = Field(min_length=2, max_length=40)
+    disclosure_summary: str = Field(min_length=5, max_length=400)
+    signer_name: str = Field(min_length=2, max_length=160)
+    signer_relationship: Literal["self", "guardian"] = "self"
+    guardian_authority_verified: bool = False
+
+    @model_validator(mode="after")
+    def check_guardian_authority(self):
+        if self.signer_relationship == "guardian" and not self.guardian_authority_verified:
+            raise ValueError("Guardian authority must be verified for guardian consent (PAT-004)")
+        return self
+
+
+class ConsentWithdrawRequest(BaseModel):
+    reason: str = Field(min_length=3, max_length=260)
+
+
 class ChargeCreate(BaseModel):
     patient_id: str
     label: str = Field(min_length=2, max_length=160)
     amount_vnd: int = Field(gt=0, le=10_000_000_000)
+    idempotency_key: str | None = Field(default=None, min_length=4, max_length=120)
 
 
 class PaymentCreate(BaseModel):
     patient_id: str
     amount_vnd: int = Field(gt=0, le=10_000_000_000)
+    payment_method: Literal["cash", "bank_transfer", "card"] = "cash"
     external_reference: str | None = Field(default=None, max_length=120)
+    idempotency_key: str | None = Field(default=None, min_length=4, max_length=120)
 
 
 class AllocationCreate(BaseModel):
     charge_id: str
     payment_id: str
     amount_vnd: int = Field(gt=0, le=10_000_000_000)
+    idempotency_key: str | None = Field(default=None, min_length=4, max_length=120)
 
 
 class RefundCreate(BaseModel):
     amount_vnd: int = Field(gt=0, le=10_000_000_000)
+    reason: str = Field(min_length=3, max_length=260)
+    idempotency_key: str | None = Field(default=None, min_length=4, max_length=120)
+
+
+class EstimateCreate(BaseModel):
+    patient_id: str
+    plan_id: str
+    version_number: int = Field(ge=1, le=1000)
+    amount_vnd: int = Field(gt=0, le=10_000_000_000)
+    items_summary: str = Field(min_length=2, max_length=400)
+
+
+class EstimateAcceptRequest(BaseModel):
+    accepted_by: str = Field(min_length=2, max_length=160)
+
+
+class CashierReconciliationCreate(BaseModel):
+    counted_cash_vnd: int = Field(ge=0, le=100_000_000_000)
+    counted_transfer_vnd: int = Field(ge=0, le=100_000_000_000)
+    counted_card_vnd: int = Field(ge=0, le=100_000_000_000)
+    notes: str = Field(default="", max_length=300)
+
+
+class ScannedPageSchema(BaseModel):
+    page_number: int = Field(ge=1, le=500)
+    sha256: str = Field(min_length=64, max_length=64)
+    legible: bool = True
+    ocr_unverified_text: str | None = Field(default=None, max_length=4000)
+
+
+class PaperBatchCreate(BaseModel):
+    source_cabinet: str = Field(min_length=3, max_length=200)
+    expected_item_count: int = Field(default=1, ge=1, le=10000)
+
+
+class PaperItemCreate(BaseModel):
+    legacy_folder_id: str = Field(min_length=2, max_length=80)
+    patient_display_name: str = Field(min_length=2, max_length=160)
+    birth_year: int | None = Field(default=None, ge=1900, le=2100)
+    phone_demo: str | None = Field(default=None, max_length=40)
+    expected_page_count: int = Field(ge=1, le=500)
+    pages: list[ScannedPageSchema] = Field(min_length=1, max_length=500)
+
+
+class PaperItemVerifyLinkRequest(BaseModel):
+    resolution_mode: Literal["link_existing_patient", "create_distinct_patient"]
+    target_patient_id: str | None = None
+    reviewer_note: str = Field(min_length=3, max_length=300)
+    claim_digitally_signed: bool = False
+
+
+class PaperBatchRollbackRequest(BaseModel):
     reason: str = Field(min_length=3, max_length=260)
 
 

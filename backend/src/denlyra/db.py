@@ -23,6 +23,23 @@ BEGIN
 END;
 """
 
+SQLITE_ALLOCATION_BOUNDS_TRIGGER = """
+CREATE TRIGGER IF NOT EXISTS tr_payment_allocation_bounds
+BEFORE INSERT ON payment_allocation
+WHEN (
+    (SELECT COALESCE(SUM(pa.amount_vnd), 0) FROM payment_allocation pa WHERE pa.charge_id = NEW.charge_id) + NEW.amount_vnd
+    > (SELECT c.amount_vnd FROM charge c WHERE c.id = NEW.charge_id)
+) OR (
+    (SELECT COALESCE(SUM(pa.amount_vnd), 0) FROM payment_allocation pa WHERE pa.payment_id = NEW.payment_id)
+    + (SELECT COALESCE(SUM(pr.amount_vnd), 0) FROM payment_refund pr WHERE pr.payment_id = NEW.payment_id)
+    + NEW.amount_vnd
+    > (SELECT p.amount_vnd FROM payment p WHERE p.id = NEW.payment_id)
+)
+BEGIN
+    SELECT RAISE(ABORT, 'payment_allocation_bounds_exceeded');
+END;
+"""
+
 
 class Base(DeclarativeBase):
     pass
@@ -53,6 +70,7 @@ def init_demo_schema(engine):
     if engine.dialect.name == "sqlite":
         with engine.begin() as conn:
             conn.execute(text(SQLITE_BOOKING_OVERLAP_TRIGGER))
+            conn.execute(text(SQLITE_ALLOCATION_BOUNDS_TRIGGER))
 
 
 def session_scope(factory) -> Generator[Session, None, None]:

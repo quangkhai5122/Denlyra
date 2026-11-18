@@ -27,6 +27,7 @@ def migration_smoke(temp):
     config.set_main_option("sqlalchemy.url", url)
     command.upgrade(config, "0001_demo")
     command.upgrade(config, "0002_hardening")
+    command.upgrade(config, "0003_treatment_and_signing")
     command.upgrade(config, "head")
     engine = create_engine(url)
     try:
@@ -34,11 +35,12 @@ def migration_smoke(temp):
         assert "resource_booking" in tables and "alembic_version" in tables
         assert "revoked_token" in tables and "form_template_version" in tables
         assert "plan_task_dependency" in tables and "clinical_document_snapshot" in tables
+        assert "consent_record" in tables and "ledger_entry" in tables and "migration_batch" in tables
         with engine.connect() as connection:
-            assert connection.exec_driver_sql("SELECT version_num FROM alembic_version").scalar() == "0003_treatment_and_signing"
+            assert connection.exec_driver_sql("SELECT version_num FROM alembic_version").scalar() == "0004_lab_consent_finance_and_migration"
     finally:
         engine.dispose()
-    print(f"SQLite Alembic smoke PASS: {len(tables) - 1} domain tables; head 0003_treatment_and_signing")
+    print(f"SQLite Alembic smoke PASS: {len(tables) - 1} domain tables; head 0004_lab_consent_finance_and_migration")
 
 
 def cli_smoke(temp):

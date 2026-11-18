@@ -6,13 +6,13 @@ and independent security/clinical/legal sign-off.
 """
 from __future__ import annotations
 
-from datetime import timezone
+from datetime import timedelta, timezone
 import hashlib
 import hmac
 import json
 
 from fastapi import HTTPException
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -20,13 +20,29 @@ from . import models as m, signing
 from .schemas import (
     AppointmentCreate,
     AppointmentReschedule,
+    CashierReconciliationCreate,
+    ChargeCreate,
+    ConsentCreate,
+    ConsentWithdrawRequest,
     DocumentAddendumCreate,
     DocumentEnterInErrorRequest,
     DocumentSnapshotCreate,
     DocumentSyntheticSignRequest,
+    EstimateAcceptRequest,
+    EstimateCreate,
     FormOfficialExportRequest,
     FormTemplateCreate,
     FormValidatePreviewRequest,
+    LabCaseCreate,
+    LabPartnerGrantCreate,
+    LabPartnerMilestoneUpdate,
+    LabReceiveRequest,
+    LabRemakeCreate,
+    PaperBatchCreate,
+    PaperBatchRollbackRequest,
+    PaperItemCreate,
+    PaperItemVerifyLinkRequest,
+    PaymentCreate,
     PlanReassessmentCreate,
     RefundCreate,
     ResourceCreateRequest,
@@ -121,6 +137,33 @@ def outbox(
             aggregate_type=aggregate_type,
             aggregate_id=aggregate_id,
             payload_json=json.dumps(payload or {}, ensure_ascii=False),
+        )
+    )
+
+
+def ledger(
+    db: Session,
+    clinic_id: str,
+    patient_id: str,
+    entry_type: str,
+    direction: str,
+    amount_vnd: int,
+    reference_type: str,
+    reference_id: str,
+    actor: str,
+    payment_method: str | None = None,
+) -> None:
+    db.add(
+        m.LedgerEntry(
+            clinic_id=clinic_id,
+            patient_id=patient_id,
+            entry_type=entry_type,
+            direction=direction,
+            amount_vnd=amount_vnd,
+            payment_method=payment_method,
+            reference_type=reference_type,
+            reference_id=reference_id,
+            actor_demo=actor[:100],
         )
     )
 
@@ -531,7 +574,7 @@ def _validate_acyclic_dependencies(
     for dep_id in new_dep_ids:
         adj.setdefault(target_task_id, set()).add(dep_id)
 
-    state: dict[str, int] = {}  # 0=unvisited, 1=visiting, 2=done
+    state: dict[str, int] = {}
 
     def dfs(node: str) -> None:
         state[node] = 1
@@ -1061,6 +1104,304 @@ def get_plan_timeline(db: Session, clinic_id: str, plan_id: str) -> dict:
     }
 
 
+def create_consent(db: Session, clinic_id: str, data: ConsentCreate, actor: str) -> m.ConsentRecord:
+    ensure(db, m.Patient, data.patient_id, clinic_id)
+    rec = m.ConsentRecord(
+        clinic_id=clinic_id,
+        patient_id=data.patient_id,
+        purpose=data.purpose,
+        template_version=data.template_version.strip(),
+        disclosure_summary=data.disclosure_summary.strip(),
+        signer_name=data.signer_name.strip(),
+        signer_relationship=data.signer_relationship,
+        guardian_authority_verified=data.guardian_authority_verified,
+        status="granted",
+        actor_demo=actor,
+    )
+    db.add(rec)
+    db.flush()
+    audit(
+        db,
+        clinic_id,
+        actor,
+        f"consent.granted.{data.purpose}",
+        "consent_record",
+        rec.id,
+        {"purpose": data.purpose, "signer_relationship": data.signer_relationship},
+    )
+    db.commit()
+    return rec
+
+
+def withdraw_consent(
+    db: Session,
+    clinic_id: str,
+    consent_id: str,
+    data: ConsentWithdrawRequest,
+    actor: str,
+) -> m.ConsentRecord:
+    rec = ensure(db, m.ConsentRecord, consent_id, clinic_id)
+    if rec.status == "withdrawn":
+        raise HTTPException(409, "Consent record is already withdrawn")
+    rec.status = "withdrawn"
+    rec.withdrawn_reason = data.reason.strip()
+    rec.withdrawn_at = m.utcnow()
+    audit(
+        db,
+        clinic_id,
+        actor,
+        f"consent.withdrawn.{rec.purpose}",
+        "consent_record",
+        rec.id,
+        {"purpose": rec.purpose, "reason": rec.withdrawn_reason},
+    )
+    db.commit()
+    return rec
+
+
+def create_lab_case(db: Session, clinic_id: str, data: LabCaseCreate, actor: str) -> m.LabCase:
+    ensure(db, m.Patient, data.patient_id, clinic_id)
+    due_naive = dt_utc_naive(data.due_on) if data.due_on else None
+    item = m.LabCase(
+        clinic_id=clinic_id,
+        patient_id=data.patient_id,
+        title=data.title.strip(),
+        specification_demo=data.specification_demo.strip(),
+        file_manifest_json=json.dumps(data.file_references, ensure_ascii=False),
+        due_on=due_naive,
+    )
+    db.add(item)
+    db.flush()
+    audit(db, clinic_id, actor, "lab.case_demo_created", "lab_case", item.id)
+    db.commit()
+    return item
+
+
+def get_lab_alerts(db: Session, clinic_id: str, lab_id: str) -> dict:
+    lab = ensure(db, m.LabCase, lab_id, clinic_id)
+    alerts = []
+    if lab.due_on and lab.status != "verified":
+        lab_links = db.scalars(
+            select(m.TreatmentCoordinationLink).where(
+                m.TreatmentCoordinationLink.clinic_id == clinic_id,
+                m.TreatmentCoordinationLink.target_type == "lab_case",
+                m.TreatmentCoordinationLink.target_id == lab.id,
+            )
+        ).all()
+        for l_link in lab_links:
+            appt_links = db.scalars(
+                select(m.TreatmentCoordinationLink).where(
+                    m.TreatmentCoordinationLink.clinic_id == clinic_id,
+                    m.TreatmentCoordinationLink.task_id == l_link.task_id,
+                    m.TreatmentCoordinationLink.target_type == "appointment",
+                )
+            ).all()
+            for a_link in appt_links:
+                appt = db.get(m.Appointment, a_link.target_id)
+                if appt and appt.status == "confirmed" and lab.due_on > appt.start_at:
+                    alerts.append(
+                        {
+                            "alert_code": "lab_due_after_appointment",
+                            "lab_case_id": lab.id,
+                            "appointment_id": appt.id,
+                            "task_id": l_link.task_id,
+                            "lab_due_on": lab.due_on.isoformat() + "Z",
+                            "appointment_start_at": appt.start_at.isoformat() + "Z",
+                            "owner_role": "treatment_coordinator",
+                            "auto_rescheduled": False,
+                        }
+                    )
+    return {"lab_case_id": lab.id, "status": lab.status, "alerts": alerts}
+
+
+def create_lab_partner_grant(
+    db: Session,
+    clinic_id: str,
+    lab_id: str,
+    staff_id: str,
+    actor: str,
+    secret: str,
+    data: LabPartnerGrantCreate,
+) -> dict:
+    lab = ensure(db, m.LabCase, lab_id, clinic_id)
+    expires_at = m.utcnow() + timedelta(seconds=data.ttl_seconds)
+    grant = m.LabPartnerGrant(
+        clinic_id=clinic_id,
+        lab_case_id=lab.id,
+        partner_name=data.partner_name.strip(),
+        expires_at=expires_at,
+        created_by_staff_id=staff_id,
+    )
+    db.add(grant)
+    db.flush()
+    exp_ts = int(expires_at.replace(tzinfo=timezone.utc).timestamp())
+    msg = f"labgrant:{grant.id}:{clinic_id}:{lab.id}:{exp_ts}".encode("utf-8")
+    sig = hmac.new(secret.encode("utf-8"), msg, hashlib.sha256).hexdigest()
+    token = f"{grant.id}.{sig}"
+    audit(
+        db,
+        clinic_id,
+        actor,
+        "lab.partner_grant_created",
+        "lab_case",
+        lab.id,
+        {"grant_id": grant.id, "partner_name": grant.partner_name},
+    )
+    db.commit()
+    return {
+        "grant_id": grant.id,
+        "grant_token": token,
+        "lab_case_id": lab.id,
+        "partner_name": grant.partner_name,
+        "expires_at": expires_at.isoformat() + "Z",
+    }
+
+
+def _resolve_lab_partner_grant(
+    db: Session,
+    grant_token: str,
+    secret: str,
+    header_clinic_id: str | None = None,
+) -> tuple[m.LabPartnerGrant, m.LabCase]:
+    if "." not in grant_token:
+        raise HTTPException(403, "Invalid lab partner grant token")
+    grant_id, provided_sig = grant_token.split(".", 1)
+    grant = db.get(m.LabPartnerGrant, grant_id)
+    if grant is None or grant.revoked:
+        raise HTTPException(403, "Lab partner grant not found or revoked")
+    if header_clinic_id and header_clinic_id != grant.clinic_id:
+        raise HTTPException(403, "Cross-clinic lab partner token access denied")
+    exp_ts = int(grant.expires_at.replace(tzinfo=timezone.utc).timestamp())
+    msg = f"labgrant:{grant.id}:{grant.clinic_id}:{grant.lab_case_id}:{exp_ts}".encode("utf-8")
+    expected_sig = hmac.new(secret.encode("utf-8"), msg, hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(provided_sig, expected_sig):
+        raise HTTPException(403, "Lab partner grant signature mismatch")
+    if m.utcnow() >= grant.expires_at:
+        raise HTTPException(403, "Lab partner grant token expired")
+    lab = ensure(db, m.LabCase, grant.lab_case_id, grant.clinic_id)
+    return grant, lab
+
+
+def get_lab_portal_case(
+    db: Session,
+    grant_token: str,
+    secret: str,
+    header_clinic_id: str | None = None,
+) -> dict:
+    grant, lab = _resolve_lab_partner_grant(db, grant_token, secret, header_clinic_id)
+    audit(
+        db,
+        grant.clinic_id,
+        f"lab_partner:{grant.partner_name}",
+        "lab.partner_portal_viewed",
+        "lab_case",
+        lab.id,
+    )
+    db.commit()
+    return {
+        "lab_case_id": lab.id,
+        "title": lab.title,
+        "specification_demo": lab.specification_demo,
+        "status": lab.status,
+        "revision_number": lab.revision_number,
+        "due_on": lab.due_on.isoformat() + "Z" if lab.due_on else None,
+        "files": json.loads(lab.file_manifest_json or "[]"),
+        "partner_name": grant.partner_name,
+        "synthetic_only": True,
+    }
+
+
+def update_lab_portal_milestone(
+    db: Session,
+    grant_token: str,
+    secret: str,
+    data: LabPartnerMilestoneUpdate,
+    header_clinic_id: str | None = None,
+) -> dict:
+    grant, lab = _resolve_lab_partner_grant(db, grant_token, secret, header_clinic_id)
+    if data.next_status not in {"accepted", "in_progress", "ready"}:
+        raise HTTPException(
+            403, "Lab partner may only update manufacturing milestones (accepted/in_progress/ready)"
+        )
+    updated = set_lab_status(
+        db,
+        grant.clinic_id,
+        lab.id,
+        data.next_status,
+        actor=f"lab_partner:{grant.partner_name}",
+    )
+    return {
+        "lab_case_id": updated.id,
+        "status": updated.status,
+        "partner_name": grant.partner_name,
+    }
+
+
+def receive_lab_case(
+    db: Session,
+    clinic_id: str,
+    lab_id: str,
+    data: LabReceiveRequest,
+    actor: str,
+) -> m.LabCase:
+    lab = ensure(db, m.LabCase, lab_id, clinic_id)
+    if lab.status != "ready":
+        raise HTTPException(409, f"Cannot record receipt from state '{lab.status}'")
+    lab.status = "received"
+    lab.delivery_condition = data.condition.strip()
+    lab.delivered_at = m.utcnow()
+    audit(
+        db,
+        clinic_id,
+        actor,
+        "lab.received_not_verified",
+        "lab_case",
+        lab.id,
+        {"condition": lab.delivery_condition},
+    )
+    outbox(db, clinic_id, "lab.received", "lab_case", lab.id)
+    db.commit()
+    return lab
+
+
+def remake_lab_case(
+    db: Session,
+    clinic_id: str,
+    lab_id: str,
+    data: LabRemakeCreate,
+    actor: str,
+) -> m.LabCase:
+    parent = ensure(db, m.LabCase, lab_id, clinic_id)
+    if parent.status in {"in_progress", "ready", "received"}:
+        parent.status = "revision_requested"
+    due_naive = dt_utc_naive(data.due_on) if data.due_on else parent.due_on
+    child = m.LabCase(
+        clinic_id=clinic_id,
+        patient_id=parent.patient_id,
+        title=f"{parent.title} (Remake v{parent.revision_number + 1})",
+        specification_demo=data.specification_demo.strip(),
+        file_manifest_json=parent.file_manifest_json,
+        parent_lab_case_id=parent.id,
+        revision_number=parent.revision_number + 1,
+        status="requested",
+        due_on=due_naive,
+    )
+    db.add(child)
+    db.flush()
+    audit(
+        db,
+        clinic_id,
+        actor,
+        "lab.remake_created",
+        "lab_case",
+        child.id,
+        {"parent_lab_case_id": parent.id, "reason": data.reason.strip()},
+    )
+    outbox(db, clinic_id, "lab.remake_requested", "lab_case", child.id)
+    db.commit()
+    return child
+
+
 LAB_TRANSITIONS = {
     "requested": {"accepted", "cancelled"},
     "accepted": {"in_progress", "cancelled"},
@@ -1079,6 +1420,9 @@ def set_lab_status(db: Session, clinic_id: str, lab_id: str, next_status: str, a
         raise HTTPException(409, f"Invalid lab state transition: {item.status} -> {next_status}")
     before = item.status
     item.status = next_status
+    if next_status == "verified":
+        item.verified_at = m.utcnow()
+        item.verified_by_staff_id = actor[:36]
     audit(
         db,
         clinic_id,
@@ -1093,6 +1437,165 @@ def set_lab_status(db: Session, clinic_id: str, lab_id: str, next_status: str, a
     return item
 
 
+def create_estimate(
+    db: Session, clinic_id: str, data: EstimateCreate, actor: str
+) -> m.EstimateVersion:
+    ensure(db, m.Patient, data.patient_id, clinic_id)
+    plan = ensure(db, m.TreatmentPlan, data.plan_id, clinic_id)
+    if plan.patient_id != data.patient_id:
+        raise HTTPException(422, "Treatment plan does not belong to patient")
+    existing = db.scalar(
+        select(m.EstimateVersion).where(
+            m.EstimateVersion.plan_id == plan.id,
+            m.EstimateVersion.version_number == data.version_number,
+        )
+    )
+    if existing is not None:
+        raise HTTPException(409, "Estimate version already exists and is immutable")
+    est = m.EstimateVersion(
+        clinic_id=clinic_id,
+        patient_id=data.patient_id,
+        plan_id=plan.id,
+        version_number=data.version_number,
+        amount_vnd=data.amount_vnd,
+        items_summary=data.items_summary.strip(),
+        status="draft",
+    )
+    db.add(est)
+    db.flush()
+    audit(
+        db,
+        clinic_id,
+        actor,
+        "finance.estimate_version_created",
+        "estimate_version",
+        est.id,
+        {"version_number": est.version_number, "amount_vnd": est.amount_vnd},
+    )
+    db.commit()
+    return est
+
+
+def accept_estimate(
+    db: Session,
+    clinic_id: str,
+    estimate_id: str,
+    data: EstimateAcceptRequest,
+    actor: str,
+) -> m.EstimateVersion:
+    est = ensure(db, m.EstimateVersion, estimate_id, clinic_id)
+    if est.status != "draft":
+        raise HTTPException(409, f"Estimate in status '{est.status}' cannot be accepted")
+    prior_accepted = db.scalars(
+        select(m.EstimateVersion).where(
+            m.EstimateVersion.plan_id == est.plan_id,
+            m.EstimateVersion.status == "accepted",
+        )
+    ).all()
+    for old in prior_accepted:
+        old.status = "superseded"
+    est.status = "accepted"
+    est.accepted_by = data.accepted_by.strip()
+    est.accepted_at = m.utcnow()
+    audit(
+        db,
+        clinic_id,
+        actor,
+        "finance.estimate_version_accepted",
+        "estimate_version",
+        est.id,
+        {"accepted_by": est.accepted_by, "amount_vnd": est.amount_vnd},
+    )
+    db.commit()
+    return est
+
+
+def create_charge(db: Session, clinic_id: str, data: ChargeCreate, actor: str) -> m.Charge:
+    if data.idempotency_key:
+        existing = db.scalar(
+            select(m.Charge).where(
+                m.Charge.clinic_id == clinic_id,
+                m.Charge.idempotency_key == data.idempotency_key,
+            )
+        )
+        if existing is not None:
+            if (
+                existing.patient_id == data.patient_id
+                and existing.label == data.label
+                and existing.amount_vnd == data.amount_vnd
+            ):
+                return existing
+            raise HTTPException(409, "Charge idempotency_key reused with different parameters")
+    ensure(db, m.Patient, data.patient_id, clinic_id)
+    item = m.Charge(
+        clinic_id=clinic_id,
+        patient_id=data.patient_id,
+        label=data.label,
+        amount_vnd=data.amount_vnd,
+        idempotency_key=data.idempotency_key,
+    )
+    db.add(item)
+    db.flush()
+    ledger(
+        db,
+        clinic_id,
+        data.patient_id,
+        "charge_posted",
+        "debit",
+        item.amount_vnd,
+        "charge",
+        item.id,
+        actor,
+    )
+    audit(db, clinic_id, actor, "finance.charge_demo_created", "charge", item.id)
+    db.commit()
+    return item
+
+
+def create_payment(db: Session, clinic_id: str, data: PaymentCreate, actor: str) -> m.Payment:
+    if data.idempotency_key:
+        existing = db.scalar(
+            select(m.Payment).where(
+                m.Payment.clinic_id == clinic_id,
+                m.Payment.idempotency_key == data.idempotency_key,
+            )
+        )
+        if existing is not None:
+            if (
+                existing.patient_id == data.patient_id
+                and existing.amount_vnd == data.amount_vnd
+                and existing.payment_method == data.payment_method
+            ):
+                return existing
+            raise HTTPException(409, "Payment idempotency_key reused with different parameters")
+    ensure(db, m.Patient, data.patient_id, clinic_id)
+    item = m.Payment(
+        clinic_id=clinic_id,
+        patient_id=data.patient_id,
+        amount_vnd=data.amount_vnd,
+        payment_method=data.payment_method,
+        external_reference=data.external_reference,
+        idempotency_key=data.idempotency_key,
+    )
+    db.add(item)
+    db.flush()
+    ledger(
+        db,
+        clinic_id,
+        data.patient_id,
+        "payment_received",
+        "credit",
+        item.amount_vnd,
+        "payment",
+        item.id,
+        actor,
+        payment_method=item.payment_method,
+    )
+    audit(db, clinic_id, actor, "finance.payment_demo_recorded", "payment", item.id)
+    db.commit()
+    return item
+
+
 def allocate(
     db: Session,
     clinic_id: str,
@@ -1100,8 +1603,24 @@ def allocate(
     payment_id: str,
     amount_vnd: int,
     actor: str,
+    idempotency_key: str | None = None,
 ):
-    # with_for_update() provides row locks on PostgreSQL, but NOT SQLite.
+    if idempotency_key:
+        existing = db.scalar(
+            select(m.PaymentAllocation).where(
+                m.PaymentAllocation.clinic_id == clinic_id,
+                m.PaymentAllocation.idempotency_key == idempotency_key,
+            )
+        )
+        if existing is not None:
+            if (
+                existing.charge_id == charge_id
+                and existing.payment_id == payment_id
+                and existing.amount_vnd == amount_vnd
+            ):
+                return existing
+            raise HTTPException(409, "Allocation idempotency_key reused with different parameters")
+
     charge = db.scalar(
         select(m.Charge)
         .where(m.Charge.id == charge_id, m.Charge.clinic_id == clinic_id)
@@ -1131,16 +1650,34 @@ def allocate(
     )
     if a + amount_vnd > charge.amount_vnd or b + r + amount_vnd > payment.amount_vnd:
         raise HTTPException(409, "Allocation exceeds charge or available payment")
-    item = m.PaymentAllocation(
-        charge_id=charge.id,
-        payment_id=payment.id,
-        amount_vnd=amount_vnd,
-    )
-    db.add(item)
-    db.flush()
-    audit(db, clinic_id, actor, "payment.demo_allocated", "payment_allocation", item.id)
-    db.commit()
-    return item
+    try:
+        item = m.PaymentAllocation(
+            clinic_id=clinic_id,
+            charge_id=charge.id,
+            payment_id=payment.id,
+            amount_vnd=amount_vnd,
+            idempotency_key=idempotency_key,
+        )
+        db.add(item)
+        db.flush()
+        ledger(
+            db,
+            clinic_id,
+            charge.patient_id,
+            "payment_allocated",
+            "credit",
+            amount_vnd,
+            "payment_allocation",
+            item.id,
+            actor,
+            payment_method=payment.payment_method,
+        )
+        audit(db, clinic_id, actor, "payment.demo_allocated", "payment_allocation", item.id)
+        db.commit()
+        return item
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(409, "Allocation exceeds charge or available payment") from exc
 
 
 def refund_payment(
@@ -1150,6 +1687,18 @@ def refund_payment(
     data: RefundCreate,
     actor: str,
 ) -> m.PaymentRefund:
+    if data.idempotency_key:
+        existing = db.scalar(
+            select(m.PaymentRefund).where(
+                m.PaymentRefund.clinic_id == clinic_id,
+                m.PaymentRefund.idempotency_key == data.idempotency_key,
+            )
+        )
+        if existing is not None:
+            if existing.payment_id == payment_id and existing.amount_vnd == data.amount_vnd:
+                return existing
+            raise HTTPException(409, "Refund idempotency_key reused with different parameters")
+
     payment = db.scalar(
         select(m.Payment)
         .where(m.Payment.id == payment_id, m.Payment.clinic_id == clinic_id)
@@ -1176,9 +1725,22 @@ def refund_payment(
         amount_vnd=data.amount_vnd,
         reason=data.reason.strip(),
         actor_demo=actor,
+        idempotency_key=data.idempotency_key,
     )
     db.add(item)
     db.flush()
+    ledger(
+        db,
+        clinic_id,
+        payment.patient_id,
+        "payment_refunded",
+        "debit",
+        item.amount_vnd,
+        "payment_refund",
+        item.id,
+        actor,
+        payment_method=payment.payment_method,
+    )
     audit(
         db,
         clinic_id,
@@ -1198,6 +1760,394 @@ def refund_payment(
     )
     db.commit()
     return item
+
+
+def get_patient_revenue_account(db: Session, clinic_id: str, patient_id: str) -> dict:
+    ensure(db, m.Patient, patient_id, clinic_id)
+    estimates = db.scalars(
+        select(m.EstimateVersion)
+        .where(
+            m.EstimateVersion.clinic_id == clinic_id,
+            m.EstimateVersion.patient_id == patient_id,
+        )
+        .order_by(m.EstimateVersion.version_number.desc())
+    ).all()
+    latest_by_plan: dict[str, int] = {}
+    for est in estimates:
+        if est.plan_id not in latest_by_plan:
+            latest_by_plan[est.plan_id] = est.amount_vnd
+    proposed_vnd = sum(latest_by_plan.values())
+
+    charged_vnd = int(
+        db.scalar(
+            select(func.coalesce(func.sum(m.Charge.amount_vnd), 0)).where(
+                m.Charge.clinic_id == clinic_id, m.Charge.patient_id == patient_id
+            )
+        )
+        or 0
+    )
+    collected_gross_vnd = int(
+        db.scalar(
+            select(func.coalesce(func.sum(m.Payment.amount_vnd), 0)).where(
+                m.Payment.clinic_id == clinic_id, m.Payment.patient_id == patient_id
+            )
+        )
+        or 0
+    )
+    refunded_vnd = int(
+        db.scalar(
+            select(func.coalesce(func.sum(m.PaymentRefund.amount_vnd), 0)).where(
+                m.PaymentRefund.clinic_id == clinic_id,
+                m.PaymentRefund.patient_id == patient_id,
+            )
+        )
+        or 0
+    )
+    allocated_vnd = int(
+        db.scalar(
+            select(func.coalesce(func.sum(m.PaymentAllocation.amount_vnd), 0))
+            .join(m.Charge, m.PaymentAllocation.charge_id == m.Charge.id)
+            .where(m.Charge.clinic_id == clinic_id, m.Charge.patient_id == patient_id)
+        )
+        or 0
+    )
+    net_collected_vnd = collected_gross_vnd - refunded_vnd
+    entries = db.scalars(
+        select(m.LedgerEntry)
+        .where(
+            m.LedgerEntry.clinic_id == clinic_id,
+            m.LedgerEntry.patient_id == patient_id,
+        )
+        .order_by(m.LedgerEntry.created_at)
+    ).all()
+    return {
+        "patient_id": patient_id,
+        "proposed_estimate_vnd": proposed_vnd,
+        "charged_vnd": charged_vnd,
+        "collected_gross_vnd": collected_gross_vnd,
+        "refunded_vnd": refunded_vnd,
+        "net_collected_vnd": net_collected_vnd,
+        "allocated_vnd": allocated_vnd,
+        "unallocated_credit_vnd": net_collected_vnd - allocated_vnd,
+        "outstanding_balance_vnd": charged_vnd - allocated_vnd,
+        "implies_clinical_completion": False,
+        "ledger_entries": [
+            {
+                "id": e.id,
+                "entry_type": e.entry_type,
+                "direction": e.direction,
+                "amount_vnd": e.amount_vnd,
+                "payment_method": e.payment_method,
+                "reference_type": e.reference_type,
+                "reference_id": e.reference_id,
+                "created_at": e.created_at.isoformat() + "Z",
+            }
+            for e in entries
+        ],
+    }
+
+
+def reconcile_cashier_daily(
+    db: Session,
+    clinic_id: str,
+    data: CashierReconciliationCreate,
+    actor: str,
+) -> m.CashierReconciliation:
+    def net_by_method(method: str) -> int:
+        gross = int(
+            db.scalar(
+                select(func.coalesce(func.sum(m.Payment.amount_vnd), 0)).where(
+                    m.Payment.clinic_id == clinic_id,
+                    m.Payment.payment_method == method,
+                )
+            )
+            or 0
+        )
+        ref = int(
+            db.scalar(
+                select(func.coalesce(func.sum(m.PaymentRefund.amount_vnd), 0))
+                .join(m.Payment, m.PaymentRefund.payment_id == m.Payment.id)
+                .where(
+                    m.Payment.clinic_id == clinic_id,
+                    m.Payment.payment_method == method,
+                )
+            )
+            or 0
+        )
+        return gross - ref
+
+    exp_cash = net_by_method("cash")
+    exp_transfer = net_by_method("bank_transfer")
+    exp_card = net_by_method("card")
+    diff_cash = data.counted_cash_vnd - exp_cash
+    diff_transfer = data.counted_transfer_vnd - exp_transfer
+    diff_card = data.counted_card_vnd - exp_card
+    status = (
+        "balanced"
+        if diff_cash == 0 and diff_transfer == 0 and diff_card == 0
+        else "discrepancy_flagged"
+    )
+    rec = m.CashierReconciliation(
+        clinic_id=clinic_id,
+        expected_cash_vnd=exp_cash,
+        counted_cash_vnd=data.counted_cash_vnd,
+        discrepancy_cash_vnd=diff_cash,
+        expected_transfer_vnd=exp_transfer,
+        counted_transfer_vnd=data.counted_transfer_vnd,
+        discrepancy_transfer_vnd=diff_transfer,
+        expected_card_vnd=exp_card,
+        counted_card_vnd=data.counted_card_vnd,
+        discrepancy_card_vnd=diff_card,
+        status=status,
+        notes=data.notes.strip(),
+        actor_demo=actor,
+    )
+    db.add(rec)
+    db.flush()
+    audit(
+        db,
+        clinic_id,
+        actor,
+        "finance.cashier_reconciled",
+        "cashier_reconciliation",
+        rec.id,
+        {"status": status},
+    )
+    db.commit()
+    return rec
+
+
+def create_paper_batch(
+    db: Session, clinic_id: str, data: PaperBatchCreate, actor: str
+) -> m.MigrationBatch:
+    batch = m.MigrationBatch(
+        clinic_id=clinic_id,
+        source_cabinet=data.source_cabinet.strip(),
+        expected_item_count=data.expected_item_count,
+        status="quarantined_open",
+        operator_actor=actor,
+    )
+    db.add(batch)
+    db.flush()
+    audit(
+        db,
+        clinic_id,
+        actor,
+        "migration.paper_batch_created",
+        "migration_batch",
+        batch.id,
+    )
+    db.commit()
+    return batch
+
+
+def ingest_paper_item(
+    db: Session,
+    clinic_id: str,
+    batch_id: str,
+    data: PaperItemCreate,
+    actor: str,
+) -> dict:
+    batch = ensure(db, m.MigrationBatch, batch_id, clinic_id)
+    if batch.status != "quarantined_open":
+        raise HTTPException(409, f"Cannot ingest into batch in status '{batch.status}'")
+
+    present_nums = {p.page_number for p in data.pages}
+    expected_nums = set(range(1, data.expected_page_count + 1))
+    missing = sorted(expected_nums - present_nums)
+    any_illegible = any(not p.legible for p in data.pages)
+    if missing:
+        comp_status = "incomplete_missing_pages"
+    elif any_illegible:
+        comp_status = "illegible_quarantined"
+    else:
+        comp_status = "complete"
+
+    name_clean = data.patient_display_name.strip()
+    conds = [m.Patient.display_name == name_clean]
+    if data.phone_demo:
+        conds.append(m.Patient.phone_demo == data.phone_demo)
+    candidates = db.scalars(
+        select(m.Patient).where(m.Patient.clinic_id == clinic_id, or_(*conds))
+    ).all()
+    cand_ids = [c.id for c in candidates]
+    match_status = "needs_human_identity_review" if cand_ids else "no_collision"
+
+    pages_serialized = [p.model_dump() for p in data.pages]
+    item = m.MigrationItem(
+        clinic_id=clinic_id,
+        batch_id=batch.id,
+        legacy_folder_id=data.legacy_folder_id.strip(),
+        patient_display_name=name_clean,
+        birth_year=data.birth_year,
+        phone_demo=data.phone_demo,
+        expected_page_count=data.expected_page_count,
+        pages_json=json.dumps(pages_serialized, ensure_ascii=False),
+        missing_pages_json=json.dumps(missing),
+        completeness_status=comp_status,
+        match_status=match_status,
+        candidate_patient_ids_json=json.dumps(cand_ids),
+        status="quarantined",
+        provenance_source="legacy_scan",
+        digital_signature_status="not_digitally_signed_legacy_paper",
+    )
+    db.add(item)
+    db.flush()
+    audit(
+        db,
+        clinic_id,
+        actor,
+        "migration.paper_item_quarantined",
+        "migration_item",
+        item.id,
+        {"completeness_status": comp_status, "match_status": match_status},
+    )
+    db.commit()
+    return _serialize_migration_item(item)
+
+
+def verify_and_link_paper_item(
+    db: Session,
+    clinic_id: str,
+    item_id: str,
+    data: PaperItemVerifyLinkRequest,
+    actor: str,
+) -> dict:
+    item = ensure(db, m.MigrationItem, item_id, clinic_id)
+    if data.claim_digitally_signed:
+        audit(
+            db,
+            clinic_id,
+            actor,
+            "migration.digital_signature_forgery_blocked",
+            "migration_item",
+            item.id,
+        )
+        db.commit()
+        raise HTTPException(
+            409,
+            "Historical paper scan cannot be marked digitally signed (DR-03 / MIG-007)",
+        )
+    if item.completeness_status != "complete":
+        raise HTTPException(
+            409,
+            f"Paper item incomplete ({item.completeness_status}); cannot mark verified complete (NEG-10 / DR-01)",
+        )
+    if item.status != "quarantined":
+        raise HTTPException(409, f"Paper item in status '{item.status}' cannot be verified")
+
+    if data.resolution_mode == "link_existing_patient":
+        if not data.target_patient_id:
+            raise HTTPException(422, "target_patient_id required for link_existing_patient")
+        pat = ensure(db, m.Patient, data.target_patient_id, clinic_id)
+        item.linked_patient_id = pat.id
+        item.created_new_patient = False
+    else:
+        new_pat = m.Patient(
+            clinic_id=clinic_id,
+            display_name=item.patient_display_name,
+            birth_year=item.birth_year,
+            phone_demo=item.phone_demo,
+            source="legacy_scan",
+        )
+        db.add(new_pat)
+        db.flush()
+        item.linked_patient_id = new_pat.id
+        item.created_new_patient = True
+
+    item.match_status = "resolved"
+    item.status = "verified_legacy_archive"
+    item.reviewer_note = data.reviewer_note.strip()
+    item.reviewed_by = actor
+    audit(
+        db,
+        clinic_id,
+        actor,
+        "migration.paper_item_verified_legacy_archive",
+        "migration_item",
+        item.id,
+        {"linked_patient_id": item.linked_patient_id, "resolution_mode": data.resolution_mode},
+    )
+    db.commit()
+    return _serialize_migration_item(item)
+
+
+def get_paper_batch_reconciliation(db: Session, clinic_id: str, batch_id: str) -> dict:
+    batch = ensure(db, m.MigrationBatch, batch_id, clinic_id)
+    items = db.scalars(
+        select(m.MigrationItem).where(m.MigrationItem.batch_id == batch.id)
+    ).all()
+    return {
+        "batch_id": batch.id,
+        "source_cabinet": batch.source_cabinet,
+        "status": batch.status,
+        "expected_item_count": batch.expected_item_count,
+        "submitted_count": len(items),
+        "incomplete_quarantined_count": sum(1 for x in items if x.completeness_status != "complete"),
+        "needs_identity_review_count": sum(
+            1 for x in items if x.match_status == "needs_human_identity_review"
+        ),
+        "verified_legacy_archive_count": sum(
+            1 for x in items if x.status == "verified_legacy_archive"
+        ),
+        "rolled_back_count": sum(1 for x in items if x.status == "rolled_back"),
+    }
+
+
+def rollback_paper_batch(
+    db: Session,
+    clinic_id: str,
+    batch_id: str,
+    data: PaperBatchRollbackRequest,
+    actor: str,
+) -> dict:
+    batch = ensure(db, m.MigrationBatch, batch_id, clinic_id)
+    if batch.status == "rolled_back":
+        raise HTTPException(409, "Migration batch already rolled back")
+    items = db.scalars(
+        select(m.MigrationItem).where(m.MigrationItem.batch_id == batch.id)
+    ).all()
+    for item in items:
+        item.status = "rolled_back"
+        item.linked_patient_id = None
+    batch.status = "rolled_back"
+    batch.rollback_reason = data.reason.strip()
+    audit(
+        db,
+        clinic_id,
+        actor,
+        "migration.paper_batch_rolled_back",
+        "migration_batch",
+        batch.id,
+        {"reason": batch.rollback_reason, "item_count": len(items)},
+    )
+    db.commit()
+    return get_paper_batch_reconciliation(db, clinic_id, batch.id)
+
+
+def _serialize_migration_item(item: m.MigrationItem) -> dict:
+    return {
+        "id": item.id,
+        "clinic_id": item.clinic_id,
+        "batch_id": item.batch_id,
+        "legacy_folder_id": item.legacy_folder_id,
+        "patient_display_name": item.patient_display_name,
+        "birth_year": item.birth_year,
+        "phone_demo": item.phone_demo,
+        "expected_page_count": item.expected_page_count,
+        "missing_pages": json.loads(item.missing_pages_json or "[]"),
+        "completeness_status": item.completeness_status,
+        "match_status": item.match_status,
+        "candidate_patient_ids": json.loads(item.candidate_patient_ids_json or "[]"),
+        "linked_patient_id": item.linked_patient_id,
+        "created_new_patient": item.created_new_patient,
+        "status": item.status,
+        "provenance_source": item.provenance_source,
+        "digital_signature_status": item.digital_signature_status,
+        "reviewer_note": item.reviewer_note,
+        "reviewed_by": item.reviewed_by,
+        "created_at": item.created_at.isoformat() + "Z",
+    }
 
 
 def create_document_snapshot(
@@ -1584,7 +2534,6 @@ def validate_form_preview(
     for f in fields:
         entry = data.values.get(f.field_code)
         if entry is None or entry.state == "missing":
-            # INV-022: Unanswered / missing items are NEVER coerced to explicit_negative.
             normalized[f.field_code] = {"state": "missing", "value": None}
             if f.required_when == "always":
                 missing_required.append(f.field_code)

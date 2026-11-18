@@ -88,6 +88,16 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
     "clinical_doc.read": {"clinic_owner", "medical_director", "dentist"},
     "clinical_doc.write": {"medical_director", "dentist"},
     "clinical_doc.sign": {"medical_director", "dentist"},
+    "consent.read": {
+        "clinic_owner", "medical_director", "dentist", "assistant",
+        "receptionist", "treatment_coordinator",
+    },
+    "consent.write": {
+        "clinic_owner", "medical_director", "dentist",
+        "receptionist", "treatment_coordinator",
+    },
+    "migration.read": {"clinic_owner", "medical_director", "dentist", "receptionist"},
+    "migration.write": {"clinic_owner", "medical_director", "dentist"},
     "signed_url.create": {"clinic_owner", "medical_director", "dentist"},
     "signed_url.consume": {"clinic_owner", "medical_director", "dentist"},
 }

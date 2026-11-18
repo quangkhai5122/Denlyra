@@ -19,6 +19,9 @@ Base URL: `http://127.0.0.1:8766`, OpenAPI at `/api/docs`. **Start only after ex
 | GET `/api/v1/demo/context` | `context.read` | clinic IDs, dentists, chairs | synthetic seed context |
 | GET/POST `/api/v1/patients` | `patient.read`/`write` | `PatientCreate` / synthetic patient | Clinic-scoped prototype registry |
 | GET `/api/v1/patients/{id}` | `patient.read` | patient | 404 if missing in clinic |
+| POST `/api/v1/consents` | `consent.write` | `ConsentCreate` | Records purpose-separated consent (`treatment`/`data_processing`/`marketing`/`financial`); checks guardian authority (`T007`) |
+| GET `/api/v1/patients/{id}/consents` | `consent.read` | list of consents | Returns distinct purpose consent records |
+| POST `/api/v1/consents/{id}/withdraw` | `consent.write` | `ConsentWithdrawRequest` | Withdraws single consent purpose without affecting clinical records (`SEC-07`) |
 | GET/POST `/api/v1/appointments` | `appointment.read`/`write` | aware RFC3339 datetime, doctor/chair/equipment, optional `idempotency_key` | Atomic multi-resource booking + DB overlap catch (`409`) |
 | POST `/api/v1/appointments/{id}/cancel` | `appointment.write` | appointment | Cancel state/history, release active reservations |
 | POST `/api/v1/appointments/{id}/reschedule` | `appointment.write` | `AppointmentReschedule` | Atomic release + rebook preserving `rescheduled_from_id` + outbox (`SCH-005`) |
@@ -44,12 +47,27 @@ Base URL: `http://127.0.0.1:8766`, OpenAPI at `/api/docs`. **Start only after ex
 | POST `/api/v1/treatment-plans/{id}/versions` | `plan.write` | new version state | Clone tasks and DAG links to fresh draft |
 | POST `/api/v1/treatment-plans/{id}/reassessments` | `plan.reassess` | `PlanReassessmentCreate` | Preserves completed history + spawns traced follow-up task in new version (`PLAN-04`) |
 | POST `/api/v1/treatment-tasks/{id}/demo-complete` | `plan.complete_task` | task state | Checks all DAG prerequisites and `requires_verified_lab` (`NEG-09`) |
-| GET/POST `/api/v1/lab-cases` | `lab.read`/`write` | patient, title | Create/list simulated lab cases |
+| GET/POST `/api/v1/lab-cases` | `lab.read`/`write` | `LabCaseCreate` | Create/list simulated lab cases with specs, `due_on`, and file manifest |
+| GET `/api/v1/lab-cases/{id}/alerts` | `lab.read` | alert summary | Alerts when `due_on > linked_appointment.start_at` (`SCH-013`) without auto-rescheduling |
+| POST `/api/v1/lab-cases/{id}/partner-grants` | `lab.write` | `LabPartnerGrantCreate` | Mints case-scoped revocable partner token (`OPS-06`) |
+| GET `/api/v1/lab-portal/cases/{token}` | Partner grant | minimized specs | Partner view excluding patient PII (`403` on expired/cross-clinic) |
+| POST `/api/v1/lab-portal/cases/{token}/milestones` | Partner grant | `LabPartnerMilestoneUpdate` | Partner updates `accepted`/`in_progress`/`ready`; blocks `verified` (`403`) |
+| POST `/api/v1/lab-cases/{id}/receive` | `lab.write` | `LabReceiveRequest` | Records delivery receipt condition (`received`, distinct from `verified`) |
+| POST `/api/v1/lab-cases/{id}/remakes` | `lab.write` | `LabRemakeCreate` | Creates linked child remake version preserving original (`LAB-007`) |
 | POST `/api/v1/lab-cases/{id}/state` | `lab.write` | next_status | Validated lab lifecycle transition |
-| GET/POST `/api/v1/finance/charges` | `finance.read`/`write` | positive integer VND | Demo charge; no real invoice |
-| GET/POST `/api/v1/finance/payments` | `finance.read`/`write` | positive integer VND | Demo payment; no gateway/receipt |
-| POST `/api/v1/finance/allocations` | `finance.allocate` | charge/payment/positive VND | `finance`/`clinic_owner` only; reject over-allocation and cross-patient |
-| POST `/api/v1/finance/payments/{id}/refunds` | `finance.refund` | `RefundCreate` | Append-only bounded refund reversal (`FIN-006`, `OPS-03`); preserves original payment |
+| POST `/api/v1/finance/estimates` | `finance.write` | `EstimateCreate` | Immutable versioned treatment estimate (`FIN-002`) |
+| POST `/api/v1/finance/estimates/{id}/accept` | `finance.write` | `EstimateAcceptRequest` | Marks patient estimate acceptance and supersedes older accepted estimate |
+| GET/POST `/api/v1/finance/charges` | `finance.read`/`write` | `ChargeCreate` (idempotent) | Demo charge + append-only `LedgerEntry`; no real invoice |
+| GET/POST `/api/v1/finance/payments` | `finance.read`/`write` | `PaymentCreate` (idempotent) | Demo payment (`cash`/`bank_transfer`/`card`) + `LedgerEntry`; deduplicates webhooks (`NEG-08`) |
+| POST `/api/v1/finance/allocations` | `finance.allocate` | `AllocationCreate` (idempotent) | `finance`/`clinic_owner` only; DB-guarded bounds + `LedgerEntry` |
+| POST `/api/v1/finance/payments/{id}/refunds` | `finance.refund` | `RefundCreate` (idempotent) | Append-only bounded refund reversal (`FIN-006`, `OPS-03`) + `LedgerEntry` |
+| GET `/api/v1/patients/{id}/revenue-account` | `finance.read` | ledger summary | Billed/collected/refunded/allocated/outstanding + ledger trail (`implies_clinical_completion: False`) |
+| POST `/api/v1/finance/reconciliations` | `finance.allocate` | `CashierReconciliationCreate` | Daily cashier close comparing counted vs ledger net by tender (`FIN-010`) |
+| POST `/api/v1/migrations/paper-batches` | `migration.write` | `PaperBatchCreate` | Opens quarantined legacy paper import batch (`T006`) |
+| POST `/api/v1/migrations/paper-batches/{id}/items` | `migration.write` | `PaperItemCreate` | Checks page hashes/completeness (`NEG-10`) and flags duplicate patient candidates (`DR-02`) |
+| POST `/api/v1/migrations/paper-items/{id}/verify-link` | `migration.write` | `PaperItemVerifyLinkRequest` | Human resolution preserving `legacy_scan` provenance (`409` on incomplete or forged digital sig) |
+| GET `/api/v1/migrations/paper-batches/{id}/reconciliation` | `migration.read` | batch counts | Batch reconciliation report (`MIG-008`) |
+| POST `/api/v1/migrations/paper-batches/{id}/rollback` | `migration.write` | `PaperBatchRollbackRequest` | Rolls back batch item links while preserving native patients |
 | GET/POST `/api/v1/clinical-forms/templates` | `clinical_form.read`/`write` | `FormTemplateCreate` | Register immutable quarantined synthetic template version (`T003`) |
 | POST `/api/v1/clinical-forms/templates/{id}/approve` | `clinical_form.write` | 409 blocked | Fails closed until external clinical/legal review (`NEEDS_CLINICAL_REVIEW.md`) |
 | POST `/api/v1/clinical-forms/validate-preview` | `clinical_form.read` | `FormValidatePreviewRequest` | Tri-state (`present`/`explicit_negative`/`unknown`/`missing`) validation preview |

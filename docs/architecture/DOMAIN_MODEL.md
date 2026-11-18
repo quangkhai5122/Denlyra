@@ -52,17 +52,17 @@ Version 0.1 · Owner: software/domain architect + dental clinical lead · Status
 | INV-011 | Task cannot complete before all prerequisites & verified lab | service | Yes (multi-prereq + `requires_verified_lab`, `T005`) |
 | INV-012 | Plan copy/reassessment preserves dependency edges & history | version cloning + reassessment | Yes (`T005`) |
 | INV-013 | Payment/refund does not mark procedure complete | bounded context separation | Yes (`T005` append-only refunds + timeline separation) |
-| INV-014 | Allocation/refund cannot exceed charge or available payment | transaction + locks | Yes (bounded allocation + refund; PG row-lock pending `T008`) |
+| INV-014 | Allocation/refund cannot exceed charge or available payment | transaction + DB trigger + locks | Yes (bounded allocation + refund + SQLite trigger + concurrent barrier test) |
 | INV-015 | Lab state change follows approved transition matrix | state machine | Yes |
-| INV-016 | Delivered lab case is not automatically verified | state machine + task gate | Yes (`NEG-09` enforced on linked tasks) |
+| INV-016 | Delivered lab case is not automatically verified | state machine + task/portal gate | Yes (`NEG-09` enforced on tasks; partner portal blocked from `verified`) |
 | INV-017 | Patient/clinic B cannot access patient A via A's credentials | auth/policy tests | Synthetic token + RBAC/ABAC enforced (T001); live OIDC pending |
 | INV-018 | DICOM/images must be linked to verified patient and encounter | source manifest + mapping | Not implemented |
-| INV-019 | Paper scans retain legacy provenance | migration importer | Not implemented |
+| INV-019 | Paper scans retain legacy provenance | migration importer | Yes (`legacy_scan` provenance + `DR-03` forgery block, `T006`) |
 | INV-020 | Form and signer evidence specific to exact approved version | signature adapter | Quarantined FormRegistry (`T003`) + FakeSyntheticSignatureProvider (`T004`); legal signer gated |
 | INV-021 | Access revocation removes future clinical write permission | identity provider + staff active/token_version | Synthetic staff deactivation + JTI revocation enforced (T001) |
 | INV-022 | Missing allergy history != explicit negative | clinical structured types | Tri-state FormRegistry validator enforced (T003) |
 | INV-023 | Stock reservation != consumption | inventory ledger | Not implemented |
-| INV-024 | Restore must reconcile database with media and signature evidence | full archive manifest | Not implemented |
+| INV-024 | Restore must reconcile database with media and signature evidence | full archive manifest | Not implemented (`T010`) |
 
 ## Clinical note states
 `draft → ready_for_authentication → authenticated → amendment_requested → separate authenticated_addendum`. In code **only `draft → demo_locked`** with SHA256 digest. Hash is an integrity marker, NOT authentication or legal e-signature. Illegal transitions raise conflict.

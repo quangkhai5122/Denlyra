@@ -2,7 +2,8 @@
 
 Supports T001 verified token/session + deny-by-default RBAC/ABAC foundation (ADR-007),
 T002 atomic multi-resource booking, T003 quarantined FormRegistry, T004 synthetic
-SignatureProvider envelope, and T005 multi-dependency Treatment Journey (ADR-008).
+SignatureProvider envelope, T005 multi-dependency Treatment Journey (ADR-008),
+T006 paper quarantine importer, T007 consent/lab partner portal, and T008 revenue ledger (ADR-009).
 Never deploy this API publicly or import real patient data.
 """
 from collections.abc import Generator
@@ -24,20 +25,33 @@ from .schemas import (
     AllocationCreate,
     AppointmentCreate,
     AppointmentReschedule,
+    CashierReconciliationCreate,
     ChargeCreate,
+    ConsentCreate,
+    ConsentWithdrawRequest,
     DentalFindingCreate,
     DocumentAddendumCreate,
     DocumentEnterInErrorRequest,
     DocumentSnapshotCreate,
     DocumentSyntheticSignRequest,
     EncounterCreate,
+    EstimateAcceptRequest,
+    EstimateCreate,
     FormOfficialExportRequest,
     FormTemplateCreate,
     FormValidatePreviewRequest,
     LabCaseCreate,
+    LabPartnerGrantCreate,
+    LabPartnerMilestoneUpdate,
+    LabReceiveRequest,
+    LabRemakeCreate,
     LabStateUpdate,
     NoteCreate,
     NoteUpdate,
+    PaperBatchCreate,
+    PaperBatchRollbackRequest,
+    PaperItemCreate,
+    PaperItemVerifyLinkRequest,
     PatientCreate,
     PaymentCreate,
     PlanCreate,
@@ -331,6 +345,36 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def get_patient(patient_id: str, context=Depends(require_perm("patient.read"))):
         db, clinic_id, _ = context
         return doc(svc.ensure(db, m.Patient, patient_id, clinic_id))
+
+    @app.post("/api/v1/consents", status_code=201)
+    def create_consent(payload: ConsentCreate, context=Depends(require_perm("consent.write"))):
+        db, clinic_id, actor = context
+        return doc(svc.create_consent(db, clinic_id, payload, actor))
+
+    @app.get("/api/v1/patients/{patient_id}/consents")
+    def list_patient_consents(
+        patient_id: str, context=Depends(require_perm("consent.read"))
+    ):
+        db, clinic_id, _ = context
+        svc.ensure(db, m.Patient, patient_id, clinic_id)
+        rows = db.scalars(
+            select(m.ConsentRecord)
+            .where(
+                m.ConsentRecord.clinic_id == clinic_id,
+                m.ConsentRecord.patient_id == patient_id,
+            )
+            .order_by(m.ConsentRecord.created_at)
+        ).all()
+        return [doc(c) for c in rows]
+
+    @app.post("/api/v1/consents/{consent_id}/withdraw")
+    def withdraw_consent(
+        consent_id: str,
+        payload: ConsentWithdrawRequest,
+        context=Depends(require_perm("consent.write")),
+    ):
+        db, clinic_id, actor = context
+        return doc(svc.withdraw_consent(db, clinic_id, consent_id, payload, actor))
 
     @app.get("/api/v1/appointments")
     def appointments(context=Depends(require_perm("appointment.read"))):
@@ -672,15 +716,60 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.post("/api/v1/lab-cases", status_code=201)
     def new_lab(payload: LabCaseCreate, context=Depends(require_perm("lab.write"))):
         db, clinic_id, actor = context
-        svc.ensure(db, m.Patient, payload.patient_id, clinic_id)
-        item = m.LabCase(
-            clinic_id=clinic_id, patient_id=payload.patient_id, title=payload.title
+        return doc(svc.create_lab_case(db, clinic_id, payload, actor))
+
+    @app.get("/api/v1/lab-cases/{lab_id}/alerts")
+    def lab_alerts(lab_id: str, context=Depends(require_perm("lab.read"))):
+        db, clinic_id, _ = context
+        return svc.get_lab_alerts(db, clinic_id, lab_id)
+
+    @app.post("/api/v1/lab-cases/{lab_id}/partner-grants", status_code=201)
+    def mint_lab_partner_grant(
+        lab_id: str,
+        payload: LabPartnerGrantCreate,
+        ctx_tuple=Depends(require_principal_perm("lab.write")),
+    ):
+        db, clinic_id, actor, principal = ctx_tuple
+        return svc.create_lab_partner_grant(
+            db, clinic_id, lab_id, principal.staff_id, actor, cfg.auth_secret, payload
         )
-        db.add(item)
-        db.flush()
-        svc.audit(db, clinic_id, actor, "lab.case_demo_created", "lab_case", item.id)
-        db.commit()
-        return doc(item)
+
+    @app.get("/api/v1/lab-portal/cases/{grant_token}")
+    def get_lab_portal_case(
+        grant_token: str,
+        db: Session = Depends(get_db),
+        x_demo_clinic: str | None = Header(None),
+    ):
+        return svc.get_lab_portal_case(db, grant_token, cfg.auth_secret, x_demo_clinic)
+
+    @app.post("/api/v1/lab-portal/cases/{grant_token}/milestones")
+    def update_lab_portal_milestone(
+        grant_token: str,
+        payload: LabPartnerMilestoneUpdate,
+        db: Session = Depends(get_db),
+        x_demo_clinic: str | None = Header(None),
+    ):
+        return svc.update_lab_portal_milestone(
+            db, grant_token, cfg.auth_secret, payload, x_demo_clinic
+        )
+
+    @app.post("/api/v1/lab-cases/{lab_id}/receive")
+    def receive_lab(
+        lab_id: str,
+        payload: LabReceiveRequest,
+        context=Depends(require_perm("lab.write")),
+    ):
+        db, clinic_id, actor = context
+        return doc(svc.receive_lab_case(db, clinic_id, lab_id, payload, actor))
+
+    @app.post("/api/v1/lab-cases/{lab_id}/remakes", status_code=201)
+    def remake_lab(
+        lab_id: str,
+        payload: LabRemakeCreate,
+        context=Depends(require_perm("lab.write")),
+    ):
+        db, clinic_id, actor = context
+        return doc(svc.remake_lab_case(db, clinic_id, lab_id, payload, actor))
 
     @app.post("/api/v1/lab-cases/{lab_id}/state")
     def lab_transition(
@@ -688,6 +777,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     ):
         db, clinic_id, actor = context
         return doc(svc.set_lab_status(db, clinic_id, lab_id, payload.next_status, actor))
+
+    @app.post("/api/v1/finance/estimates", status_code=201)
+    def create_estimate(
+        payload: EstimateCreate, context=Depends(require_perm("finance.write"))
+    ):
+        db, clinic_id, actor = context
+        return doc(svc.create_estimate(db, clinic_id, payload, actor))
+
+    @app.post("/api/v1/finance/estimates/{estimate_id}/accept")
+    def accept_estimate(
+        estimate_id: str,
+        payload: EstimateAcceptRequest,
+        context=Depends(require_perm("finance.write")),
+    ):
+        db, clinic_id, actor = context
+        return doc(svc.accept_estimate(db, clinic_id, estimate_id, payload, actor))
 
     @app.get("/api/v1/finance/charges")
     def list_charges(context=Depends(require_perm("finance.read"))):
@@ -700,18 +805,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.post("/api/v1/finance/charges", status_code=201)
     def new_charge(payload: ChargeCreate, context=Depends(require_perm("finance.write"))):
         db, clinic_id, actor = context
-        svc.ensure(db, m.Patient, payload.patient_id, clinic_id)
-        item = m.Charge(
-            clinic_id=clinic_id,
-            patient_id=payload.patient_id,
-            label=payload.label,
-            amount_vnd=payload.amount_vnd,
-        )
-        db.add(item)
-        db.flush()
-        svc.audit(db, clinic_id, actor, "finance.charge_demo_created", "charge", item.id)
-        db.commit()
-        return doc(item)
+        return doc(svc.create_charge(db, clinic_id, payload, actor))
 
     @app.get("/api/v1/finance/payments")
     def list_payments(context=Depends(require_perm("finance.read"))):
@@ -724,18 +818,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.post("/api/v1/finance/payments", status_code=201)
     def new_payment(payload: PaymentCreate, context=Depends(require_perm("finance.write"))):
         db, clinic_id, actor = context
-        svc.ensure(db, m.Patient, payload.patient_id, clinic_id)
-        item = m.Payment(
-            clinic_id=clinic_id,
-            patient_id=payload.patient_id,
-            amount_vnd=payload.amount_vnd,
-            external_reference=payload.external_reference,
-        )
-        db.add(item)
-        db.flush()
-        svc.audit(db, clinic_id, actor, "finance.payment_demo_recorded", "payment", item.id)
-        db.commit()
-        return doc(item)
+        return doc(svc.create_payment(db, clinic_id, payload, actor))
 
     @app.post("/api/v1/finance/allocations", status_code=201)
     def new_allocation(
@@ -750,6 +833,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 payload.payment_id,
                 payload.amount_vnd,
                 actor,
+                idempotency_key=payload.idempotency_key,
             )
         )
 
@@ -761,6 +845,62 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     ):
         db, clinic_id, actor = context
         return doc(svc.refund_payment(db, clinic_id, payment_id, payload, actor))
+
+    @app.get("/api/v1/patients/{patient_id}/revenue-account")
+    def get_revenue_account(
+        patient_id: str, context=Depends(require_perm("finance.read"))
+    ):
+        db, clinic_id, _ = context
+        return svc.get_patient_revenue_account(db, clinic_id, patient_id)
+
+    @app.post("/api/v1/finance/reconciliations", status_code=201)
+    def reconcile_cashier(
+        payload: CashierReconciliationCreate,
+        context=Depends(require_perm("finance.allocate")),
+    ):
+        db, clinic_id, actor = context
+        return doc(svc.reconcile_cashier_daily(db, clinic_id, payload, actor))
+
+    @app.post("/api/v1/migrations/paper-batches", status_code=201)
+    def create_paper_batch(
+        payload: PaperBatchCreate, context=Depends(require_perm("migration.write"))
+    ):
+        db, clinic_id, actor = context
+        return doc(svc.create_paper_batch(db, clinic_id, payload, actor))
+
+    @app.post("/api/v1/migrations/paper-batches/{batch_id}/items", status_code=201)
+    def ingest_paper_item(
+        batch_id: str,
+        payload: PaperItemCreate,
+        context=Depends(require_perm("migration.write")),
+    ):
+        db, clinic_id, actor = context
+        return svc.ingest_paper_item(db, clinic_id, batch_id, payload, actor)
+
+    @app.post("/api/v1/migrations/paper-items/{item_id}/verify-link")
+    def verify_paper_item(
+        item_id: str,
+        payload: PaperItemVerifyLinkRequest,
+        context=Depends(require_perm("migration.write")),
+    ):
+        db, clinic_id, actor = context
+        return svc.verify_and_link_paper_item(db, clinic_id, item_id, payload, actor)
+
+    @app.get("/api/v1/migrations/paper-batches/{batch_id}/reconciliation")
+    def paper_batch_reconciliation(
+        batch_id: str, context=Depends(require_perm("migration.read"))
+    ):
+        db, clinic_id, _ = context
+        return svc.get_paper_batch_reconciliation(db, clinic_id, batch_id)
+
+    @app.post("/api/v1/migrations/paper-batches/{batch_id}/rollback")
+    def paper_batch_rollback(
+        batch_id: str,
+        payload: PaperBatchRollbackRequest,
+        context=Depends(require_perm("migration.write")),
+    ):
+        db, clinic_id, actor = context
+        return svc.rollback_paper_batch(db, clinic_id, batch_id, payload, actor)
 
     @app.get("/api/v1/clinical-forms/templates")
     def get_form_templates(context=Depends(require_perm("clinical_form.read"))):

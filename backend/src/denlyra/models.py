@@ -266,8 +266,16 @@ class LabCase(Base):
     clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
     patient_id: Mapped[str] = mapped_column(String(36), nullable=False)
     title: Mapped[str] = mapped_column(String(180), nullable=False)
+    specification_demo: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    file_manifest_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    parent_lab_case_id: Mapped[str | None] = mapped_column(String(36))
+    revision_number: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     status: Mapped[str] = mapped_column(String(28), nullable=False, default="requested")
     due_on: Mapped[datetime | None] = mapped_column(DateTime())
+    delivery_condition: Mapped[str | None] = mapped_column(String(200))
+    delivered_at: Mapped[datetime | None] = mapped_column(DateTime())
+    verified_by_staff_id: Mapped[str | None] = mapped_column(String(36))
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime())
     created_at: Mapped[datetime] = created_col()
     __table_args__ = (
         ForeignKeyConstraint(["clinic_id", "patient_id"], ["patient.clinic_id", "patient.id"]),
@@ -281,11 +289,13 @@ class Charge(Base):
     patient_id: Mapped[str] = mapped_column(String(36), nullable=False)
     label: Mapped[str] = mapped_column(String(160), nullable=False)
     amount_vnd: Mapped[int] = mapped_column(Integer, nullable=False)
+    idempotency_key: Mapped[str | None] = mapped_column(String(120))
     created_at: Mapped[datetime] = created_col()
     __table_args__ = (
         ForeignKeyConstraint(["clinic_id", "patient_id"], ["patient.clinic_id", "patient.id"]),
         CheckConstraint("amount_vnd > 0", name="ck_charge_positive"),
         UniqueConstraint("clinic_id", "id"),
+        UniqueConstraint("clinic_id", "idempotency_key", name="uq_charge_clinic_idempotency"),
     )
 
 
@@ -295,21 +305,26 @@ class Payment(Base):
     clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
     patient_id: Mapped[str] = mapped_column(String(36), nullable=False)
     amount_vnd: Mapped[int] = mapped_column(Integer, nullable=False)
+    payment_method: Mapped[str] = mapped_column(String(24), nullable=False, default="cash")
     external_reference: Mapped[str | None] = mapped_column(String(120))
+    idempotency_key: Mapped[str | None] = mapped_column(String(120))
     created_at: Mapped[datetime] = created_col()
     __table_args__ = (
         ForeignKeyConstraint(["clinic_id", "patient_id"], ["patient.clinic_id", "patient.id"]),
         CheckConstraint("amount_vnd > 0", name="ck_payment_positive"),
         UniqueConstraint("clinic_id", "id"),
+        UniqueConstraint("clinic_id", "idempotency_key", name="uq_payment_clinic_idempotency"),
     )
 
 
 class PaymentAllocation(Base):
     __tablename__ = "payment_allocation"
     id: Mapped[str] = id_col()
+    clinic_id: Mapped[str | None] = mapped_column(String(36))
     charge_id: Mapped[str] = mapped_column(ForeignKey("charge.id"), nullable=False)
     payment_id: Mapped[str] = mapped_column(ForeignKey("payment.id"), nullable=False)
     amount_vnd: Mapped[int] = mapped_column(Integer, nullable=False)
+    idempotency_key: Mapped[str | None] = mapped_column(String(120))
     created_at: Mapped[datetime] = created_col()
     __table_args__ = (CheckConstraint("amount_vnd > 0", name="ck_allocation_positive"),)
 
@@ -323,8 +338,12 @@ class PaymentRefund(Base):
     amount_vnd: Mapped[int] = mapped_column(Integer, nullable=False)
     reason: Mapped[str] = mapped_column(String(260), nullable=False)
     actor_demo: Mapped[str] = mapped_column(String(100), nullable=False)
+    idempotency_key: Mapped[str | None] = mapped_column(String(120))
     created_at: Mapped[datetime] = created_col()
-    __table_args__ = (CheckConstraint("amount_vnd > 0", name="ck_refund_positive"),)
+    __table_args__ = (
+        CheckConstraint("amount_vnd > 0", name="ck_refund_positive"),
+        UniqueConstraint("clinic_id", "idempotency_key", name="uq_refund_clinic_idempotency"),
+    )
 
 
 class OutboxEvent(Base):
@@ -436,3 +455,129 @@ class SchemaMigrationMeta(Base):
     revision_id: Mapped[str] = mapped_column(String(40), primary_key=True)
     description: Mapped[str] = mapped_column(String(240), nullable=False)
     applied_at: Mapped[datetime] = created_col()
+
+
+class ConsentRecord(Base):
+    __tablename__ = "consent_record"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    patient_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    purpose: Mapped[str] = mapped_column(String(30), nullable=False)
+    template_version: Mapped[str] = mapped_column(String(40), nullable=False)
+    disclosure_summary: Mapped[str] = mapped_column(String(400), nullable=False)
+    signer_name: Mapped[str] = mapped_column(String(160), nullable=False)
+    signer_relationship: Mapped[str] = mapped_column(String(20), nullable=False, default="self")
+    guardian_authority_verified: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="granted")
+    withdrawn_reason: Mapped[str | None] = mapped_column(String(260))
+    withdrawn_at: Mapped[datetime | None] = mapped_column(DateTime())
+    actor_demo: Mapped[str] = mapped_column(String(100), nullable=False)
+    created_at: Mapped[datetime] = created_col()
+    __table_args__ = (
+        ForeignKeyConstraint(["clinic_id", "patient_id"], ["patient.clinic_id", "patient.id"]),
+    )
+
+
+class LabPartnerGrant(Base):
+    __tablename__ = "lab_partner_grant"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    lab_case_id: Mapped[str] = mapped_column(ForeignKey("lab_case.id"), nullable=False)
+    partner_name: Mapped[str] = mapped_column(String(160), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(), nullable=False)
+    revoked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    created_by_staff_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    created_at: Mapped[datetime] = created_col()
+
+
+class EstimateVersion(Base):
+    __tablename__ = "estimate_version"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    patient_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    plan_id: Mapped[str] = mapped_column(ForeignKey("treatment_plan.id"), nullable=False)
+    version_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    amount_vnd: Mapped[int] = mapped_column(Integer, nullable=False)
+    items_summary: Mapped[str] = mapped_column(String(400), nullable=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="draft")
+    accepted_by: Mapped[str | None] = mapped_column(String(160))
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime())
+    created_at: Mapped[datetime] = created_col()
+    __table_args__ = (
+        CheckConstraint("amount_vnd > 0", name="ck_estimate_positive"),
+        UniqueConstraint("plan_id", "version_number", name="uq_estimate_plan_version"),
+    )
+
+
+class LedgerEntry(Base):
+    __tablename__ = "ledger_entry"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    patient_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    entry_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    direction: Mapped[str] = mapped_column(String(16), nullable=False)
+    amount_vnd: Mapped[int] = mapped_column(Integer, nullable=False)
+    payment_method: Mapped[str | None] = mapped_column(String(24))
+    reference_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    reference_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    actor_demo: Mapped[str] = mapped_column(String(100), nullable=False)
+    created_at: Mapped[datetime] = created_col()
+    __table_args__ = (CheckConstraint("amount_vnd > 0", name="ck_ledger_positive"),)
+
+
+class CashierReconciliation(Base):
+    __tablename__ = "cashier_reconciliation"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    expected_cash_vnd: Mapped[int] = mapped_column(Integer, nullable=False)
+    counted_cash_vnd: Mapped[int] = mapped_column(Integer, nullable=False)
+    discrepancy_cash_vnd: Mapped[int] = mapped_column(Integer, nullable=False)
+    expected_transfer_vnd: Mapped[int] = mapped_column(Integer, nullable=False)
+    counted_transfer_vnd: Mapped[int] = mapped_column(Integer, nullable=False)
+    discrepancy_transfer_vnd: Mapped[int] = mapped_column(Integer, nullable=False)
+    expected_card_vnd: Mapped[int] = mapped_column(Integer, nullable=False)
+    counted_card_vnd: Mapped[int] = mapped_column(Integer, nullable=False)
+    discrepancy_card_vnd: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(30), nullable=False)
+    notes: Mapped[str] = mapped_column(String(300), nullable=False, default="")
+    actor_demo: Mapped[str] = mapped_column(String(100), nullable=False)
+    created_at: Mapped[datetime] = created_col()
+
+
+class MigrationBatch(Base):
+    __tablename__ = "migration_batch"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    source_cabinet: Mapped[str] = mapped_column(String(200), nullable=False)
+    expected_item_count: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="quarantined_open")
+    rollback_reason: Mapped[str | None] = mapped_column(String(260))
+    operator_actor: Mapped[str] = mapped_column(String(100), nullable=False)
+    created_at: Mapped[datetime] = created_col()
+
+
+class MigrationItem(Base):
+    __tablename__ = "migration_item"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    batch_id: Mapped[str] = mapped_column(ForeignKey("migration_batch.id"), nullable=False)
+    legacy_folder_id: Mapped[str] = mapped_column(String(80), nullable=False)
+    patient_display_name: Mapped[str] = mapped_column(String(160), nullable=False)
+    birth_year: Mapped[int | None] = mapped_column(Integer)
+    phone_demo: Mapped[str | None] = mapped_column(String(40))
+    expected_page_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    pages_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    missing_pages_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    completeness_status: Mapped[str] = mapped_column(String(40), nullable=False)
+    match_status: Mapped[str] = mapped_column(String(40), nullable=False)
+    candidate_patient_ids_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    linked_patient_id: Mapped[str | None] = mapped_column(String(36))
+    created_new_patient: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    status: Mapped[str] = mapped_column(String(40), nullable=False, default="quarantined")
+    provenance_source: Mapped[str] = mapped_column(String(30), nullable=False, default="legacy_scan")
+    digital_signature_status: Mapped[str] = mapped_column(
+        String(40), nullable=False, default="not_digitally_signed_legacy_paper"
+    )
+    reviewer_note: Mapped[str | None] = mapped_column(String(300))
+    reviewed_by: Mapped[str | None] = mapped_column(String(100))
+    created_at: Mapped[datetime] = created_col()
