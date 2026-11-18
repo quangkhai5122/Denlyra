@@ -73,7 +73,4 @@ Next task and reason:
 Commit/push status:
 ```
 
-**Next engineering task:** `docs/tasks/T001_HARDEN_IDENTITY.md`; read its acceptance criteria
-before editing. Onboarding is tracked separately as T000; do not start T001 during an
-onboarding-only session. The current demo is deliberately insecure and MUST remain
-synthetic-only until the gated work is complete.
+**Next engineering task:** `docs/tasks/T005_TREATMENT_E2E.md` (or `docs/tasks/T004_SIGNATURE_DOCUMENTS.md` synthetic adapter slice); read its acceptance criteria before editing. `T001` synthetic auth foundation is complete (`ADR-007`), `T002` awaits a live PostgreSQL instance for final exclusion verification, and `T003`/`T004` clinical activation remains gated by `docs/clinical/NEEDS_CLINICAL_REVIEW.md`. The current demo MUST remain synthetic-only until all clinical, legal, and security gates are complete.

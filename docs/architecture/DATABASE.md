@@ -1,7 +1,7 @@
 # Data architecture: schema, migrations and PostgreSQL constraints
 
 ## Executable demo model
-`backend/src/denlyra/models.py` holds SQLAlchemy tables. Demo bootstrap calls `Base.metadata.create_all` **only with explicit `DENLYRA_DEMO_MODE=1`**. Tables are NOT clinically approved EMR schema, and the current code lacks a number of entities listed in the product catalog. `backend/alembic/versions/0001_demo_schema.py` demonstrates PostgreSQL migration/exclusion syntax but must be reviewed and tested before production.
+`backend/src/denlyra/models.py` holds 23 SQLAlchemy tables (18 R0 core domain tables plus `revoked_token`, `signed_url_grant`, `form_template_version`, `form_field_map`, and `schema_migration_meta`). Demo bootstrap calls `Base.metadata.create_all` **only with explicit `DENLYRA_DEMO_MODE=1`** and installs a SQLite `BEFORE INSERT` overlap trigger on `resource_booking`. Tables are NOT clinically approved EMR schema. `backend/alembic/versions/0001_demo_schema.py` contains frozen explicit DDL for the initial 18 tables plus PostgreSQL GiST exclusion syntax, and `0002_hardening.py` upgrades `0001_demo` to `0002_hardening`. Live PostgreSQL concurrency must be tested on a running PostgreSQL server before production.
 
 ## Core constraints and indexes
 - Opaque immutable UUID PKs, parent clinic ownership, composite FKs where possible.

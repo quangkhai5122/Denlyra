@@ -16,11 +16,12 @@
 | M8 | Controlled clinical pilot | Approved production deployment, training, cutover, incident playbook | All launch gates signed by clinic and security/legal owners |
 | M9 | Repeatable business deployment | Billing, onboarding wizard, support, license, clinic cohort metrics | Paid pilot retention and measured value |
 
-## Current position (2026-11-17)
-R0 synthetic baseline verified by T000; no production milestone is complete. M0 discovery
-and M1 secure core are pending. Start T001 next; PostgreSQL/identity, clinical mapping and
-release gates remain unsatisfied. See `docs/PROJECT_STATE.md` and its linked session evidence.
-Archived foundation milestone numbers are historical and differ from this active roadmap.
+## Current position (2026-11-18)
+R0 synthetic baseline verified by T000. On 2026-11-18:
+- `T001` synthetic authentication, RBAC/ABAC deny-by-default, staff deactivation invalidation, token revocation, and single-use signed URL foundation completed (`ADR-007`).
+- `T002` frozen Alembic migration chain (`0001_demo` -> `0002_hardening`), atomic doctor+chair+equipment booking, `IntegrityError` -> `409` rollback, booking idempotency, and 2-connection barrier race test harness implemented; final live PostgreSQL verification awaits a running PostgreSQL test server (`DENLYRA_TEST_POSTGRES_URL`).
+- `T003` safe synthetic `FormRegistry`, version immutability, and tri-state (`present`/`explicit_negative`/`unknown`/`missing`) validation implemented with `docs/clinical/NEEDS_CLINICAL_REVIEW.md` blocking clinical activation until named dentist and legal counsel sign-off.
+No production milestone is complete; M0 human discovery and M1 live PostgreSQL + independent security review remain pending. Start `T005` (or `T004` synthetic `SignatureProvider` interface) next. See `docs/PROJECT_STATE.md`.
 
 ## Next ten coded tasks
 `T001` identity & authorization; `T002` PostgreSQL migration / booking race test; `T003` real clinical form mapping (blocked human); `T004` authenticated signature state machine (blocked human); `T005` treatment E2E with full dependency/rollback; `T006` audited source paper importer; `T007` lab and consent; `T008` financial ledger and refund; `T009` role-based React frontend; `T010` backup/archive/manifests and restore.

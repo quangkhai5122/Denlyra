@@ -1,4 +1,4 @@
-/** Local-only synthetic demo proxy: NOT authenticated, not usable in production. */
+/** Local-only synthetic demo proxy: NOT authenticated for production use. */
 import { NextRequest, NextResponse } from "next/server";
 
 type Ctx = { params: Promise<{ path: string[] }> };
@@ -15,9 +15,17 @@ async function forward(req: NextRequest, ctx: Ctx): Promise<Response> {
   const { path } = await ctx.params;
   const safe = path.map(encodeURIComponent).join("/");
   const target = `${parsed.origin}/api/v1/${safe}${req.nextUrl.search}`;
-  const headers: HeadersInit = { "Accept": "application/json" };
+  const headers: Record<string, string> = { "Accept": "application/json" };
   const clinic = req.headers.get("X-Demo-Clinic");
   if (clinic) headers["X-Demo-Clinic"] = clinic;
+  const auth = req.headers.get("Authorization");
+  if (auth) headers["Authorization"] = auth;
+  const secFetchSite = req.headers.get("sec-fetch-site");
+  if (secFetchSite) headers["Sec-Fetch-Site"] = secFetchSite;
+  const origin = req.headers.get("origin");
+  if (origin) {
+    headers["Origin"] = origin === req.nextUrl.origin ? parsed.origin : origin;
+  }
   headers["X-Demo-Actor"] = "nextjs-prototype-user";
   if (!["GET", "HEAD"].includes(req.method)) headers["Content-Type"] = "application/json";
   try {

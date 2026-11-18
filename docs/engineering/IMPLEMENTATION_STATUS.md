@@ -2,10 +2,11 @@
 
 ## Executed in starter
 - Synthetic demo UI: overview, clinics, patients, appointments, encounter draft, note version/demolock, plan/task version, FDI tooth-code event reference, lab status, finance charges/payment, audit event.
-- Python backend FastAPI+SQLAlchemy. Demo SQLite automatically bootstrapped; clinic scoping on API reads; basic Host/Origin protections.
-- Typed schemas and constrained positive integer money; note revision history; task prerequisites; basic cross-tenant reference reject.
-- Reference PostgreSQL Alembic migration with resource EXCLUDE; offline PostgreSQL SQL generation and disposable SQLite upgrade passed. Live PostgreSQL, upgrade compatibility and concurrency remain unverified; Docker Compose was not run.
-- Negative automated tests, legal and domain reference docs, 222-ID feature catalog.
+- Python backend FastAPI+SQLAlchemy (23 tables, 48 OpenAPI operations). Demo SQLite automatically bootstrapped; clinic scoping on API reads; basic Host/Origin protections.
+- T001 synthetic token issuer (`HS256`), deny-by-default RBAC/ABAC policy engine, staff deactivation token invalidation, JTI revocation, one-time clinic-scoped signed URLs, and sensitive clinical read/denial audit trail (`ADR-007`).
+- T002 explicit frozen Alembic migration chain (`0001_demo` -> `0002_hardening`), atomic multi-resource (doctor + chair + equipment) booking, `IntegrityError` -> `409` rollback, idempotency keys, SQLite `BEFORE INSERT` overlap trigger, and 2-connection barrier concurrency test harness. Live PostgreSQL server execution remains unverified until a PostgreSQL instance is provisioned.
+- T003 quarantined synthetic `FormRegistry` with immutable `(official_code, schema_version)`, tri-state (`present`/`explicit_negative`/`unknown`/`missing`) validation (`INV-022`), and fail-closed `409` blocks on self-approval and official EMR export (`docs/clinical/NEEDS_CLINICAL_REVIEW.md`).
+- Negative automated tests (40 passed, 1 skipped live-Postgres check), legal and domain reference docs, 222-ID feature catalog (33 partial demo flags).
 
 ## Designed only — not implemented
 - Real login, role authorizations, multi-clinic user identities, production clinic database routing.

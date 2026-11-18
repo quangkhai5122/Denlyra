@@ -41,8 +41,8 @@ Version 0.1 · Owner: software/domain architect + dental clinical lead · Status
 |---|---|---|---|
 | INV-001 | All references belong to same owning clinic | service + composite FK | Partly |
 | INV-002 | Patient ID immutable; phone not unique | DB + service | Yes |
-| INV-003 | Two active bookings for same chair/time impossible | PostgreSQL exclusion | DDL supplied; concurrent test pending |
-| INV-004 | Clinician and chair acquired atomically | DB transaction + exclusion | SQLite sequential demo only |
+| INV-003 | Two active bookings for same chair/time impossible | PostgreSQL exclusion + SQLite trigger | DDL + SQLite trigger + 2-connection race test; live PG server pending |
+| INV-004 | Clinician, chair and equipment acquired atomically | DB transaction + exclusion | Yes (doctor+chair+equipment atomic rollback) |
 | INV-005 | Cancellation frees resource, retains event history | service + audit | Yes |
 | INV-006 | Signed clinical artifact immutable | archive + signature verification | Demo lock only |
 | INV-007 | Draft editing checks expected revision | service + optimistic version | Yes |
@@ -55,12 +55,12 @@ Version 0.1 · Owner: software/domain architect + dental clinical lead · Status
 | INV-014 | Allocation cannot exceed charge or available payment | transaction + locks | Sequential demo only |
 | INV-015 | Lab state change follows approved transition matrix | state machine | Yes |
 | INV-016 | Delivered lab case is not automatically verified | state machine | Yes |
-| INV-017 | Patient/clinic B cannot access patient A via A's credentials | auth/policy tests | NOT implemented; demo selectors forgeable |
+| INV-017 | Patient/clinic B cannot access patient A via A's credentials | auth/policy tests | Synthetic token + RBAC/ABAC enforced (T001); live OIDC pending |
 | INV-018 | DICOM/images must be linked to verified patient and encounter | source manifest + mapping | Not implemented |
 | INV-019 | Paper scans retain legacy provenance | migration importer | Not implemented |
-| INV-020 | Form and signer evidence specific to exact approved version | signature adapter | Not implemented |
-| INV-021 | Access revocation removes future clinical write permission | identity provider | Not implemented |
-| INV-022 | Missing allergy history != explicit negative | clinical structured types | Not implemented |
+| INV-020 | Form and signer evidence specific to exact approved version | signature adapter | Quarantined FormRegistry versioned; signer adapter pending |
+| INV-021 | Access revocation removes future clinical write permission | identity provider + staff active/token_version | Synthetic staff deactivation + JTI revocation enforced (T001) |
+| INV-022 | Missing allergy history != explicit negative | clinical structured types | Tri-state FormRegistry validator enforced (T003) |
 | INV-023 | Stock reservation != consumption | inventory ledger | Not implemented |
 | INV-024 | Restore must reconcile database with media and signature evidence | full archive manifest | Not implemented |
 

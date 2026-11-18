@@ -1,7 +1,28 @@
+from pathlib import Path
+import shutil
+import tempfile
 import pytest
 from fastapi.testclient import TestClient
 from denlyra.api import create_app
 from denlyra.config import Settings
+
+_SESSION_BASETEMP: Path | None = None
+
+
+def pytest_configure(config):
+    global _SESSION_BASETEMP
+    if not config.option.basetemp:
+        local = Path(__file__).resolve().parents[2] / "local_data"
+        local.mkdir(exist_ok=True)
+        _SESSION_BASETEMP = Path(tempfile.mkdtemp(prefix="pytest-run-", dir=local))
+        config.option.basetemp = str(_SESSION_BASETEMP / "tmp")
+
+
+def pytest_unconfigure(config):
+    global _SESSION_BASETEMP
+    if _SESSION_BASETEMP and _SESSION_BASETEMP.exists():
+        shutil.rmtree(_SESSION_BASETEMP, ignore_errors=True)
+        _SESSION_BASETEMP = None
 
 
 @pytest.fixture

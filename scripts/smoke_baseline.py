@@ -25,16 +25,18 @@ def migration_smoke(temp):
     config.set_main_option("script_location", str(ROOT / "backend/alembic"))
     url = f"sqlite+pysqlite:///{temp / 'migration.db'}"
     config.set_main_option("sqlalchemy.url", url)
+    command.upgrade(config, "0001_demo")
     command.upgrade(config, "head")
     engine = create_engine(url)
     try:
         tables = set(inspect(engine).get_table_names())
         assert "resource_booking" in tables and "alembic_version" in tables
+        assert "revoked_token" in tables and "form_template_version" in tables
         with engine.connect() as connection:
-            assert connection.exec_driver_sql("SELECT version_num FROM alembic_version").scalar() == "0001_demo"
+            assert connection.exec_driver_sql("SELECT version_num FROM alembic_version").scalar() == "0002_hardening"
     finally:
         engine.dispose()
-    print(f"SQLite Alembic smoke PASS: {len(tables) - 1} domain tables; head 0001_demo")
+    print(f"SQLite Alembic smoke PASS: {len(tables) - 1} domain tables; head 0002_hardening")
 
 
 def cli_smoke(temp):

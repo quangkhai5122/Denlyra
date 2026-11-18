@@ -9,6 +9,9 @@ class Settings:
     db_url: str = "sqlite+pysqlite:///./local_data/denlyra-demo.db"
     host: str = "127.0.0.1"
     port: int = 8766
+    require_auth: bool = False
+    auth_provider_available: bool = True
+    auth_secret: str = "denlyra-synthetic-demo-hmac-secret-do-not-use-in-prod"
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -17,6 +20,9 @@ class Settings:
             db_url=os.getenv("DENLYRA_DATABASE_URL", cls.db_url),
             host=os.getenv("DENLYRA_HOST", "127.0.0.1"),
             port=int(os.getenv("DENLYRA_PORT", "8766")),
+            require_auth=os.getenv("DENLYRA_REQUIRE_AUTH", "0") == "1",
+            auth_provider_available=os.getenv("DENLYRA_AUTH_PROVIDER_AVAILABLE", "1") != "0",
+            auth_secret=os.getenv("DENLYRA_AUTH_SECRET", cls.auth_secret),
         )
 
     def validate(self) -> None:

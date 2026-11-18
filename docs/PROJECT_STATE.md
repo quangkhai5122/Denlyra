@@ -1,145 +1,104 @@
-# Denlyra durable agent handoff — 2026-11-17
+# Denlyra durable agent handoff — 2026-11-18
 
 ## Current status
-Research-grade **synthetic-only demonstrator**, version `0.1.0`. R0 repository onboarding
-and local baseline are verified; M0 partner discovery and M1 secure core are pending.
-**Not production, not approved EMR, not legally signed clinical records.**
+Research-grade **synthetic-only demonstrator**, version `0.1.0`.
+- `R0` repository onboarding (`T000`) and `T001` synthetic authentication + deny-by-default RBAC/ABAC foundation (`ADR-007`) are verified.
+- `T002` frozen Alembic migration chain (`0001_demo` -> `0002_hardening`), atomic multi-resource booking, `IntegrityError` -> `409` rollback, `idempotency_key`, SQLite overlap trigger, and 2-connection barrier concurrency test harness are implemented; final PostgreSQL exclusion verification awaits a live PostgreSQL instance (`DENLYRA_TEST_POSTGRES_URL`).
+- `T003` quarantined synthetic `FormRegistry` and tri-state (`present`/`explicit_negative`/`unknown`/`missing`) validation (`INV-022`) are implemented, with clinical activation blocked pending human review in [NEEDS_CLINICAL_REVIEW.md](clinical/NEEDS_CLINICAL_REVIEW.md).
+- **Not production, not approved EMR, not legally signed clinical records.**
 
 Single source of current status: this file. Detailed dated evidence:
-[2026-11-17 T000 onboarding](sessions/2026-11-17_T000_ONBOARDING.md).
-Mandatory opening/closing and Vietnamese report:
-[AGENT_WORKFLOW](engineering/AGENT_WORKFLOW.md).
+- [2026-11-18 T001/T002/T003 foundation hardening](sessions/2026-11-18_T001_T002_T003_FOUNDATION_HARDENING.md)
+- [2026-11-17 T000 onboarding](sessions/2026-11-17_T000_ONBOARDING.md)
+Mandatory opening/closing and Vietnamese report: [AGENT_WORKFLOW](engineering/AGENT_WORKFLOW.md).
 
 ## Implemented & demonstrated
-- FastAPI localhost API, 18 domain tables and 36 OpenAPI HTTP operations, plus static UI
-  with fictional Clinic A/B selectors. Prototype code is still centralized in api/services/models,
-  not yet separated into all target bounded-context modules.
-- Patient UUID identity; shared fake phone does not merge patients; clinic-scoped references.
-- Sequential appointment conflict checks for clinician/chair and cancellation history.
-- FDI code/surface validation and append-only demo finding history.
-- Draft note revisions, stale-revision rejection, `demo_locked` hash and linked addenda.
-  This is service-level demo behavior, not DB-enforced immutable legal records.
-- Draft/demo-reviewed plan versions; one optional prerequisite per task; cloned versions
-  preserve old rows and reset new progress. No approved clinical plan or performed procedures.
-- Lab state transitions and separate fictional charge/payment/allocation records.
-- Explicit demo startup opt-in, launcher loopback validation, basic Host/Origin checks.
-- Optional Next.js patients/plans prototype builds and typechecks; full role frontend pending.
-- T000 renamed package/config/UI/docs to Denlyra, repaired Windows UTF-8 artifact checking
-  and backend lint, aligned Alembic sample URL with Compose, added baseline constraints,
-  npm lockfile/PostCSS patch, repeatable smoke/manifest tools and expanded CI definitions.
+- FastAPI localhost API, **23 domain/platform tables** and **48 OpenAPI HTTP operations**, plus static UI (`apps/demo-web/`) and optional Next.js prototype (`apps/clinic-web/`).
+- **T001 Identity & RBAC/ABAC foundation (`ADR-007`):**
+  - Local synthetic token issuer (`POST /api/v1/auth/token`, `HS256`) and server-side verification against live `Staff` membership (`active`, `role`, `clinic_id`, `branch_id`, `token_version`) and `revoked_token` (`jti`).
+  - Deny-by-default RBAC/ABAC across all endpoints: receptionists cannot create encounters, lock clinical notes, review treatment plans, or allocate payments; finance staff are denied confidential clinical reads (`encounters`, `notes`, `findings`, `odontogram`); dentists cannot post financial allocations.
+  - Immediate token invalidation upon staff deactivation (`POST /api/v1/staff/{id}/deactivate`) or session revocation (`POST /api/v1/auth/revoke`), preserving historical authored encounters.
+  - Single-use clinic-scoped signed URL grants (`POST /api/v1/auth/signed-urls` -> `GET /api/v1/signed-download/{token}`) rejecting cross-clinic access, expiry, and reuse.
+  - Fail-closed `503` when `DENLYRA_AUTH_PROVIDER_AVAILABLE=0`. Next.js proxy forwards `Authorization`, `Origin`, and `Sec-Fetch-Site` headers (`R-009` resolved).
+- **T002 Scheduling & Migration Hardening:**
+  - Frozen explicit DDL in `0001_demo_schema.py` (18 tables) + `0002_hardening.py` (5 new tables + columns + `schema_migration_meta`), tested from both empty DB and populated `0001_demo` fixture DB (`R-010` resolved).
+  - Atomic booking of clinician + chair + optional `equipment_ids` (`kind="device"`), `idempotency_key` deduplication, `IntegrityError` -> `db.rollback()` -> `409 Conflict`, SQLite `BEFORE INSERT` overlap trigger, and 2-connection `threading.Barrier(2)` race test.
+- **T003 Quarantined Clinical FormRegistry:**
+  - Immutable `(official_code, schema_version)` registration in `quarantined_synthetic_draft` status (`NEG-16`), tri-state (`present`/`explicit_negative`/`unknown`/`missing`) validation enforcing `INV-022`, and fail-closed `409` guards on template approval (`NEG-20`) and official EMR export (`docs/clinical/NEEDS_CLINICAL_REVIEW.md`).
+- **Cross-agent pytest isolation:** `backend/tests/conftest.py` and `backend/pyproject.toml` isolate temporary directories inside `local_data/` and disable `.pytest_cache` contention across Windows agent sandboxes.
 
 ## Current truth vs future targets
 | Category | Actual state | Target / next evidence |
 |---|---|---|
-| Identity | No authentication; `X-Demo-*` forgeable | T001 verified identity, deny-by-default roles/clinic membership |
-| Tenancy | Shared demo DB and selected-clinic filters | ADR-003 proposed DB-per-clinic routing; not implemented or finally approved |
-| Scheduling | SQLite sequential checks | T002 live PostgreSQL exclusion, concurrent transactions and 409 mapping |
-| Notes | Demo revision/hash/addendum | T003/T004 reviewed forms, signer evidence, immutable archive |
-| Treatment | Single-dependency administrative tasks | T005 multi-dependency journey, ownership, schedule/lab/consent contracts |
-| Finance | Demo positive integer amounts/allocations | T008 immutable ledger, idempotency/refunds and concurrency |
-| Frontend | Static default + small buildable Next prototype | T009 generated client, authorized role workspaces, browser/accessibility tests |
-| Files / interop | No uploads, imaging, FHIR/DICOM | Reviewed encrypted archive and partner adapters |
-| AI / external effects | No AI, messaging or real payment provider | Independent privacy/clinical/legal/provider gates |
-| DR / deployment | No backups or production infrastructure | T010 archive/key restore and approved isolated deployment |
+| Identity | T001 synthetic token + RBAC/ABAC + revocation + signed URLs implemented | Live OIDC/MFA deployment and independent security review (`SEC-G1`) |
+| Tenancy | Clinic-scoped FKs + verified token `clinic_id` check | ADR-003 proposed DB-per-clinic routing; not implemented |
+| Scheduling | Atomic doctor+chair+device booking, `IntegrityError`->409, SQLite trigger + 2-connection race test | Run `test_live_postgresql_exclusion_constraint_and_race` on live PostgreSQL 16 (`T002`) |
+| Forms & Notes | Quarantined `FormRegistry` (`INV-022`) + demo note revision/hash/addendum | Named dentist + legal counsel review (`NEEDS_CLINICAL_REVIEW.md`) + `T004` signature adapter |
+| Treatment | Single-dependency tasks and version cloning | `T005` multi-dependency DAG, reassessment loops, cross-context contracts |
+| Finance | Demo positive integer amounts/allocations | `T008` immutable ledger, idempotency/refunds and PostgreSQL row-lock concurrency |
+| Frontend | Static default + buildable Next prototype (proxy headers fixed) | `T009` generated client, authorized role workspaces, browser/accessibility tests |
+| DR / deployment | No backups or production infrastructure | `T010` archive/key restore and approved isolated deployment |
 
 ## Task / milestone ledger
 | ID | Status | Evidence / starting condition |
 |---|---|---|
-| [T000](tasks/T000_REPOSITORY_ONBOARDING.md) | Completed — local baseline and handoff | Linked session; initial baseline commit `d8d7c44` pushed and remote SHA verified; latest documentation receipt via Git |
-| [T001](tasks/T001_HARDEN_IDENTITY.md) | **Next / pending; not started** | Read packet, define identity ADR and permission matrix; negative tests before auth changes |
-| [T002](tasks/T002_POSTGRES_BOOKING.md) | Pending | Isolated synthetic PostgreSQL server/driver; reviewed migration and race harness |
-| T003 / T004 | Blocked for clinical implementation | Named dentist + counsel, official source/form/signer review; synthetic interfaces only |
-| T005 | Pending | T001 and agreed clinical content contracts |
-| T006 | Pending | T001/T003 + encrypted archive |
-| T007 | Pending | T001/T004 + consent/requisition contracts |
-| T008 | Pending | T001 + clinic billing policy |
-| T009 | Pending; prototype only | T001 + stable OpenAPI; existing build is not acceptance |
-| T010 | Pending; P0 before PHI | T001/T004 + key/archive/retention design |
+| [T000](tasks/T000_REPOSITORY_ONBOARDING.md) | Completed | [2026-11-17 session](sessions/2026-11-17_T000_ONBOARDING.md); commits `d8d7c44` / `5437f43` |
+| [T001](tasks/T001_HARDEN_IDENTITY.md) | Completed (synthetic foundation) | [ADR-007](adr/ADR-007-identity-and-authorization.md), `backend/src/denlyra/auth.py`, `backend/tests/test_identity_auth.py`; live OIDC & independent security review pending |
+| [T002](tasks/T002_POSTGRES_BOOKING.md) | In progress — code & race harness complete; blocked on live PostgreSQL server | Explicit migrations `0001_demo`->`0002_hardening`, atomic equipment/idempotency/rollback, `test_scheduling_concurrency.py`; needs `DENLYRA_TEST_POSTGRES_URL` live run |
+| [T003](tasks/T003_FORM_MAPPING.md) | Blocked on human clinical/legal sign-off (safe synthetic interface complete) | [NEEDS_CLINICAL_REVIEW.md](clinical/NEEDS_CLINICAL_REVIEW.md), `FormRegistry` & `test_form_registry.py` implemented |
+| [T004](tasks/T004_SIGNATURE_DOCUMENTS.md) | Blocked for real legal signing; ready for synthetic `SignatureProvider` double | Needs `SignatureProvider` fake double + negative tests (`NEG-03`, `NEG-14`) |
+| [T005](tasks/T005_TREATMENT_E2E.md) | **Next / pending; ready to start** | `T001` complete; implement multi-dependency DAG, cycle check, reassessment events |
+| [T006](tasks/T006_PAPER_IMPORT.md) | Pending | Depends on `T001`/`T003` + encrypted archive |
+| [T007](tasks/T007_LAB_CONSENT.md) | Pending | Depends on `T001`/`T004` + consent/requisition contracts |
+| [T008](tasks/T008_FINANCE_LEDGER.md) | Pending | Depends on `T001` + clinic billing policy |
+| [T009](tasks/T009_REACT_FRONTEND.md) | Pending; prototype only | Depends on `T001` + stabilized OpenAPI |
+| [T010](tasks/T010_BACKUP_RESTORE.md) | Pending; P0 before PHI | Depends on `T001`/`T004` + key/archive/retention design |
 
-No feature task is in progress after T000. No M0/M1 exit gate has passed. Full backlog:
-[ROADMAP](engineering/ROADMAP.md), [task packets](tasks/),
-[222-ID catalog](product/FUNCTION_CATALOG.md): **23 partial demo flags, 199 not implemented**;
-no row is certified production functionality. The generator owns catalog status.
+Full backlog: [ROADMAP](engineering/ROADMAP.md), [task packets](tasks/), [222-ID catalog](product/FUNCTION_CATALOG.md): **33 partial demo flags (`D`), 189 not implemented (`—`)**; 0 rows are certified production functionality.
 
-## Validation evidence — last verified 2026-11-17
+## Validation evidence — last verified 2026-11-18
 Windows, repository `.venv`, CPython 3.12.14; Node 24.11.1 / npm 11.6.2.
-Versions captured in `backend/constraints-baseline.txt` and frontend package-lock.json.
-Exact commands/cwd and output are in the linked session report.
 
 | Check | Observed result |
 |---|---|
-| `python -m pytest backend/tests -q` | 26 passed; 1 Starlette/httpx deprecation warning |
-| Backend Ruff / compileall; static JS `node --check` | Passed |
-| UTF-8 artifact guard | Passed; 222 unique catalog IDs, 20 mandatory files, disabled flags and Markdown links |
-| `python scripts/smoke_baseline.py` | Passed; SQLite fresh upgrade to 0001_demo/18 tables; CLI opt-in refusal and real loopback HTTP startup; process stopped/temp DBs removed |
-| Alembic `upgrade head --sql` (cwd backend) | PostgreSQL offline SQL generated with EXCLUDE; **not run on PostgreSQL** |
+| `./.venv/Scripts/python.exe -m pytest backend/tests -q` | **40 passed, 1 skipped** (live PG skipped without `DENLYRA_TEST_POSTGRES_URL`); 1 Starlette/httpx deprecation warning |
+| Backend & scripts Ruff / `compileall` / `node --check` | Passed (exit 0) |
+| `python scripts/verify_artifact.py` | Passed; 222 unique catalog IDs, 20 mandatory files, disabled safety flags and Markdown links |
+| `python scripts/smoke_baseline.py` | Passed; SQLite upgrade `0001_demo` -> `0002_hardening` (23 domain tables); CLI opt-in refusal and loopback HTTP startup (48 operations) |
+| Alembic `upgrade head --sql` (cwd `backend`) | Passed; offline PostgreSQL SQL generated for `0001_demo` -> `0002_hardening` with `EXCLUDE USING gist` |
 | Next `npm run typecheck` / `npm run build` | Passed on Windows, Next 15.5.29 / React 19.3.1 |
-| `npm audit --audit-level=moderate` after PostCSS override | 0 reported vulnerabilities at check time; not a full security assurance |
-| `python -m pip check` | Passed; Python vulnerability/license audit not run |
-| Catalog regeneration / source manifest / diff review | See session evidence; manifest is refreshed before each commit |
-
-CI definitions cover Windows/Ubuntu backend and Linux Next build/audit. A local pass or
-workflow definition is not evidence of a remote CI pass; inspect actual runs after push.
-No Docker/psql command was available. Live PostgreSQL/concurrency, existing-schema upgrade,
-rollback/restore, browser E2E/accessibility, load, penetration/security and clinical/legal
-acceptance are **not verified**.
+| `python scripts/update_manifest.py --check` | Passed |
 
 ## Open risk ledger / technical debt
 | ID | Severity | Known truth and owner task |
 |---|---|---|
-| R-001 | Critical before PHI | No real auth, roles or revocation; selectors forgeable. T001 |
-| R-002 | High | SQLite scheduling/finance races; PostgreSQL constraint/error mapping and concurrency untested. T002/T008 |
-| R-003 | Critical before clinical use | Demo locks/audit mutable by DB actor; note lock-vs-update and plan version races lack transaction proof. T004/T005 |
-| R-004 | Critical before clinical use | Official form mapping, signatures and clinic scope not human-approved. T003/T004/M0 |
-| R-005 | Critical before PHI | No encrypted archive, backup/key recovery, restore or incident implementation. T010 |
-| R-006 | High | No real FHIR/DICOM, source migration or attachment identity validation. T006/interop |
+| R-001 | High before PHI | T001 synthetic token + RBAC/ABAC + revocation implemented; live OIDC/MFA & independent security audit still required before PHI (`SEC-G1`) |
+| R-002 | High | T002 atomic multi-resource booking, `IntegrityError`->409, and 2-connection race test pass on SQLite trigger; live PostgreSQL server verification still required (`T002`/`T008`) |
+| R-003 | Critical before clinical use | Demo locks/audit mutable by DB actor; `SignatureProvider` fake double and DB append-only rules pending (`T004`/`T005`) |
+| R-004 | Critical before clinical use | Quarantined `FormRegistry` implemented (`T003`); official form mapping and signature rules blocked on human sign-off (`docs/clinical/NEEDS_CLINICAL_REVIEW.md`) |
+| R-005 | Critical before PHI | No encrypted archive, backup/key recovery, restore or incident implementation (`T010`) |
+| R-006 | High | No real FHIR/DICOM, source migration or attachment identity validation (`T006`/interop) |
 | R-007 | High | No consent/provider authorization for real payment, communications or clinical AI. Remain disabled |
-| R-008 | Commercial blocker | Denlyra brand/trademark and software license undecided; rename is not clearance. Owner/counsel |
-| R-009 | High before exposure | Next proxy drops browser Origin/Fetch-Metadata when forwarding; backend guards do not cover proxy input. Source-inspection finding; no exploit/browser test performed. T001/T009 |
-| R-010 | Medium | Alembic 0001 imports mutable ORM metadata; no stable historical DDL/upgrade chain or safe destructive downgrade. T002 |
-| R-011 | Medium | DB timestamps are naive UTC, API appends Z; static calendar uses browser timezone rather than fixed clinic timezone. T002/T009 |
-| R-012 | Medium | Missing pagination, generated DTO/client, idempotency/outbox/read-access audit, stricter money input validation and DB-enforced append-only rules. Scope by owning task |
-| R-013 | Low / platform debt | Starlette/httpx test-client deprecation; baseline constraints are a Windows capture, not a complete cross-platform dependency lock. Track in T001/T009/CI |
-
-Source inspection is not an independent security audit. Existing regulatory references
-and dates were inventoried, **not legally revalidated** in T000. No clinic approvals,
-retention periods, legal signature methods, compliance claims or commercial claims were added.
+| R-008 | Commercial blocker | Denlyra brand/trademark and software license undecided (`Owner/counsel`) |
+| R-009 | Mitigated in local proxy | Next proxy now forwards `Authorization`, `Origin`, and `Sec-Fetch-Site`; full browser/E2E auth tests remain in `T009` |
+| R-010 | Resolved in Alembic | `0001_demo` now uses frozen explicit DDL and `0002_hardening` upgrades cleanly with `schema_migration_meta`; live PostgreSQL rehearsal remains in `T002` |
+| R-011 | Medium | DB timestamps are naive UTC, API appends Z; static calendar uses browser timezone rather than fixed clinic timezone (`T002`/`T009`) |
+| R-012 | Medium | Missing pagination, generated DTO/client, outbox, and stricter money ledger reversals (`T005`/`T008`/`T009`) |
+| R-013 | Low / platform debt | Cross-agent pytest temp/cache collision fixed in `conftest.py`/`pyproject.toml`; Starlette/httpx deprecation warning remains |
 
 ## Decisions locked so far
-ADR-001: synthetic modular-monolith direction; ADR-002: separate clinical/finance authority
-and immutable-document principle (pending clinical/legal detail); ADR-003: **proposed**
-DB-per-clinic target; ADR-004: draft-only optional AI; ADR-005: site-specific release gates;
-[ADR-006](adr/ADR-006-denlyra-onboarding.md): Denlyra naming and durable handoff.
-Archived research is context; active ADRs/domain invariant IDs/roadmap govern current work.
-No schema/table/revision ID changed in T000; sample config names and Python imports changed.
+- `ADR-001`: synthetic modular-monolith direction
+- `ADR-002`: separate clinical/finance authority and immutable-document principle
+- `ADR-003`: **proposed** DB-per-clinic target
+- `ADR-004`: draft-only optional AI
+- `ADR-005`: site-specific release gates
+- [ADR-006](adr/ADR-006-denlyra-onboarding.md): Denlyra naming and durable handoff
+- [ADR-007](adr/ADR-007-identity-and-authorization.md): Identity, session verification, and deny-by-default RBAC/ABAC foundation
 
 ## Next tasks and human decisions
-1. **P0 T001** — start with identity provider options, local synthetic issuer/session contract,
-   role/object permission matrix and failing negative tests. Keep clinical routes disabled
-   unless permission coverage is demonstrated. Independent production auth review still required.
-2. **P0 T002** — prepare isolated PostgreSQL, stable migration/error handling and two-connection
-   booking tests (chair and clinician, adjacent slots, cancellation, rollback). Needs a test server.
-3. **P0 M0 / T003 discovery** — owner identifies dentist/counsel and supplies approved structural
-   form/license/signature requirements outside this synthetic repo; no PHI. Human work can
-   proceed independently; no automatic multi-agent delegation or clinic communication.
-
-Owner decisions: commercial license/brand; identity hosting/vendor requirements; PostgreSQL
-integration environment; named dental/legal/security reviewers and clinic-specific forms.
-No human confirmation is needed to resume authorized synthetic T001 preparation.
+1. **P0 `T005` (`docs/tasks/T005_TREATMENT_E2E.md`)** — implement multi-dependency task DAG with cycle detection, stage transitions/reassessment events creating new task instances, and cross-context schedule/lab/finance contracts.
+2. **P0 `T004` (`docs/tasks/T004_SIGNATURE_DOCUMENTS.md` synthetic slice)** — implement `SignatureProvider` interface with fake test double, canonical snapshot envelope, and negative tests (`NEG-03`, `NEG-14`) while keeping legal signing gated on `NEEDS_CLINICAL_REVIEW.md`.
+3. **P0 `T002` live PostgreSQL verification & `M0`/`T003` human clinical review** — run `test_scheduling_concurrency.py` against a live PostgreSQL 16 instance when Docker/PostgreSQL is available, and obtain dentist/counsel sign-off for [NEEDS_CLINICAL_REVIEW.md](clinical/NEEDS_CLINICAL_REVIEW.md).
 
 ## Git and exact continuation
-Initial branch `main`, no prior commits or tracked files; origin
-`https://github.com/quangkhai5122/Denlyra.git` had no advertised refs at onboarding.
-The owner authorized initial commit and normal push. No deployment is authorized.
-Initial baseline commit **`d8d7c449f0c51c80162680beb7a38f4e43c17094`**, subject
-`chore: establish Denlyra synthetic baseline [T000]`, was pushed successfully with
-`git push -u origin main`; local/remote main SHA matched and worktree was clean.
-This later documentation receipt records that observed outcome; it is committed separately.
-Remote CI results have not been inspected. Current HEAD/push state remain authoritative in Git:
-`git log -1 --format=fuller`, `git status --short --branch`,
-`git ls-remote origin refs/heads/main`. Compare local/remote SHA for the latest receipt.
-
-Next session begins with those commands and AGENTS/this file/latest report/T001/relevant
-ADRs. Then run `.venv/Scripts/python.exe -m pytest backend/tests -q` on Windows and
-scope T001 acceptance before edits. No running server is required; smoke checks stop
-all child processes. Runtime/install caches, local databases and `.env.local` stay ignored.
+Next session begins with `git status --short --branch`, `git log -2 --oneline`, `AGENTS.md`, this file, [2026-11-18 session report](sessions/2026-11-18_T001_T002_T003_FOUNDATION_HARDENING.md), and `docs/tasks/T005_TREATMENT_E2E.md` (or `T004_SIGNATURE_DOCUMENTS.md`). Then run `./.venv/Scripts/python.exe -m pytest backend/tests -q` and scope negative tests before edits.

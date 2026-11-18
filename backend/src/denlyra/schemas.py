@@ -1,5 +1,6 @@
 """Typed request schemas; strings and money are deliberately constrained."""
 from datetime import datetime
+from typing import Literal
 from pydantic import BaseModel, Field, model_validator
 
 
@@ -16,6 +17,8 @@ class AppointmentCreate(BaseModel):
     start_at: datetime
     end_at: datetime
     reason_demo: str = Field(default="Demo appointment", min_length=2, max_length=260)
+    equipment_ids: list[str] = Field(default_factory=list, max_length=10)
+    idempotency_key: str | None = Field(default=None, min_length=4, max_length=120)
 
     @model_validator(mode="after")
     def check_utc(self):
@@ -94,3 +97,67 @@ class DentalFindingCreate(BaseModel):
         if not ((1 <= a <= 4 and 1 <= b <= 8) or (5 <= a <= 8 and 1 <= b <= 5)):
             raise ValueError("Invalid FDI tooth code")
         return self
+
+
+class TokenIssueRequest(BaseModel):
+    clinic_id: str
+    role: Literal[
+        "clinic_owner", "medical_director", "dentist", "assistant",
+        "receptionist", "treatment_coordinator", "finance",
+    ]
+    staff_id: str | None = None
+    branch_id: str = Field(default="branch-main", min_length=2, max_length=36)
+    ttl_seconds: int = Field(default=3600, ge=-3600, le=86400)
+
+
+class SignedUrlCreateRequest(BaseModel):
+    subject_type: Literal["clinical_note", "encounter", "lab_case"]
+    subject_id: str = Field(min_length=2, max_length=36)
+    ttl_seconds: int = Field(default=300, ge=1, le=3600)
+
+
+class StaffCreateRequest(BaseModel):
+    display_name: str = Field(min_length=2, max_length=120)
+    role: Literal[
+        "clinic_owner", "medical_director", "dentist", "assistant",
+        "receptionist", "treatment_coordinator", "finance",
+    ]
+    branch_id: str = Field(default="branch-main", min_length=2, max_length=36)
+
+
+class ResourceCreateRequest(BaseModel):
+    name: str = Field(min_length=2, max_length=100)
+    kind: Literal["chair", "device"]
+
+
+class FormFieldSchema(BaseModel):
+    field_code: str = Field(min_length=2, max_length=80, pattern="^[a-z0-9_]+$")
+    label_vi: str = Field(min_length=2, max_length=200)
+    field_type: Literal["text", "tri_state", "date", "fdi_tooth", "integer"]
+    required_when: Literal["always", "optional", "conditional"] = "always"
+    allow_unknown: bool = False
+
+
+class FormTemplateCreate(BaseModel):
+    official_code: str = Field(min_length=2, max_length=40)
+    title: str = Field(min_length=2, max_length=200)
+    schema_version: int = Field(default=1, ge=1, le=1000)
+    source_citation: str = Field(min_length=5, max_length=300)
+    source_sha256: str = Field(min_length=64, max_length=64)
+    fields: list[FormFieldSchema] = Field(min_length=1, max_length=100)
+
+
+class FormFieldValueInput(BaseModel):
+    state: Literal["present", "explicit_negative", "unknown", "not_applicable", "missing"]
+    value: str | int | None = None
+
+
+class FormValidatePreviewRequest(BaseModel):
+    template_id: str
+    encounter_id: str
+    values: dict[str, FormFieldValueInput] = Field(default_factory=dict)
+
+
+class FormOfficialExportRequest(BaseModel):
+    template_id: str
+    encounter_id: str

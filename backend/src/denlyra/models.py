@@ -45,9 +45,11 @@ class Staff(Base):
     __tablename__ = "staff"
     id: Mapped[str] = id_col()
     clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    branch_id: Mapped[str] = mapped_column(String(36), nullable=False, default="branch-main")
     display_name: Mapped[str] = mapped_column(String(120), nullable=False)
     role: Mapped[str] = mapped_column(String(30), nullable=False)
     active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    token_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     __table_args__ = (UniqueConstraint("clinic_id", "id"),)
 
 
@@ -87,6 +89,7 @@ class Appointment(Base):
     end_at: Mapped[datetime] = mapped_column(DateTime(), nullable=False)
     status: Mapped[str] = mapped_column(String(24), nullable=False, default="confirmed")
     reason_demo: Mapped[str] = mapped_column(String(260), nullable=False, default="Demo appointment")
+    idempotency_key: Mapped[str | None] = mapped_column(String(120))
     created_at: Mapped[datetime] = created_col()
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     __table_args__ = (
@@ -96,6 +99,7 @@ class Appointment(Base):
         CheckConstraint("end_at > start_at", name="ck_appointment_valid_range"),
         CheckConstraint("status IN ('confirmed','cancelled')", name="ck_appointment_demo_status"),
         UniqueConstraint("clinic_id", "id"),
+        UniqueConstraint("clinic_id", "idempotency_key", name="uq_appointment_clinic_idempotency"),
     )
 
 
@@ -112,6 +116,7 @@ class ResourceBooking(Base):
         ForeignKeyConstraint(["clinic_id", "appointment_id"], ["appointment.clinic_id", "appointment.id"]),
         CheckConstraint("end_at > start_at", name="ck_booking_valid_range"),
         CheckConstraint("state IN ('active','cancelled')", name="ck_booking_state"),
+        Index("ix_booking_active_lookup", "clinic_id", "resource_key", "state", "start_at", "end_at"),
     )
 
 
@@ -274,3 +279,70 @@ class AuditEvent(Base):
     subject_id: Mapped[str] = mapped_column(String(36), nullable=False)
     metadata_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
     created_at: Mapped[datetime] = created_col()
+
+
+class RevokedToken(Base):
+    __tablename__ = "revoked_token"
+    id: Mapped[str] = id_col()
+    jti: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    staff_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    reason: Mapped[str] = mapped_column(String(120), nullable=False, default="revoked")
+    created_at: Mapped[datetime] = created_col()
+
+
+class SignedUrlGrant(Base):
+    __tablename__ = "signed_url_grant"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    created_by_staff_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    subject_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    subject_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(), nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime())
+    created_at: Mapped[datetime] = created_col()
+
+
+class FormTemplateVersion(Base):
+    __tablename__ = "form_template_version"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    official_code: Mapped[str] = mapped_column(String(40), nullable=False)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    schema_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    source_citation: Mapped[str] = mapped_column(String(300), nullable=False)
+    source_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    approval_status: Mapped[str] = mapped_column(
+        String(40), nullable=False, default="quarantined_synthetic_draft"
+    )
+    approved_by_dentist: Mapped[str | None] = mapped_column(String(120))
+    approved_by_counsel: Mapped[str | None] = mapped_column(String(120))
+    created_at: Mapped[datetime] = created_col()
+    __table_args__ = (
+        UniqueConstraint(
+            "clinic_id", "official_code", "schema_version",
+            name="uq_form_template_clinic_code_version",
+        ),
+    )
+
+
+class FormFieldMap(Base):
+    __tablename__ = "form_field_map"
+    id: Mapped[str] = id_col()
+    template_id: Mapped[str] = mapped_column(ForeignKey("form_template_version.id"), nullable=False)
+    field_code: Mapped[str] = mapped_column(String(80), nullable=False)
+    label_vi: Mapped[str] = mapped_column(String(200), nullable=False)
+    field_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    required_when: Mapped[str] = mapped_column(String(40), nullable=False, default="always")
+    allow_unknown: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    created_at: Mapped[datetime] = created_col()
+    __table_args__ = (
+        UniqueConstraint("template_id", "field_code", name="uq_form_field_template_code"),
+    )
+
+
+class SchemaMigrationMeta(Base):
+    __tablename__ = "schema_migration_meta"
+    revision_id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    description: Mapped[str] = mapped_column(String(240), nullable=False)
+    applied_at: Mapped[datetime] = created_col()

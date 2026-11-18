@@ -4,8 +4,24 @@ Production requires reviewed Alembic migrations, PostgreSQL exclusion constraint
 clinically appropriate authorization, and verified encrypted backups.
 """
 from collections.abc import Generator
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
+
+SQLITE_BOOKING_OVERLAP_TRIGGER = """
+CREATE TRIGGER IF NOT EXISTS tr_no_overlapping_active_resource_booking
+BEFORE INSERT ON resource_booking
+WHEN NEW.state = 'active' AND EXISTS (
+    SELECT 1 FROM resource_booking rb
+    WHERE rb.clinic_id = NEW.clinic_id
+      AND rb.resource_key = NEW.resource_key
+      AND rb.state = 'active'
+      AND rb.start_at < NEW.end_at
+      AND rb.end_at > NEW.start_at
+)
+BEGIN
+    SELECT RAISE(ABORT, 'no_overlapping_active_resource_booking');
+END;
+"""
 
 
 class Base(DeclarativeBase):
@@ -34,6 +50,9 @@ def session_factory(engine):
 def init_demo_schema(engine):
     from denlyra import models  # noqa: F401
     Base.metadata.create_all(engine)
+    if engine.dialect.name == "sqlite":
+        with engine.begin() as conn:
+            conn.execute(text(SQLITE_BOOKING_OVERLAP_TRIGGER))
 
 
 def session_scope(factory) -> Generator[Session, None, None]:
