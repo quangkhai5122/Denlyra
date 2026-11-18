@@ -42,15 +42,18 @@ def test_alembic_upgrade_from_empty_and_from_0001_fixture_preserves_data(tmp_pat
                 )
             )
 
-        # Step 2: Upgrade existing 0001_demo DB to head (0002_hardening)
+        # Step 2: Upgrade existing 0001_demo DB through 0002_hardening to head (0003_treatment_and_signing)
+        command.upgrade(cfg, "0002_hardening")
         command.upgrade(cfg, "head")
         tables_head = set(inspect(engine).get_table_names())
         assert "revoked_token" in tables_head
         assert "signed_url_grant" in tables_head
         assert "form_template_version" in tables_head
+        assert "plan_task_dependency" in tables_head
+        assert "clinical_document_snapshot" in tables_head
         assert "schema_migration_meta" in tables_head
         with engine.connect() as conn:
-            assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0002_hardening"
+            assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0003_treatment_and_signing"
             preserved = conn.execute(
                 text("SELECT display_name FROM patient WHERE id = 'pat-v1-0001'")
             ).scalar()
@@ -58,7 +61,7 @@ def test_alembic_upgrade_from_empty_and_from_0001_fixture_preserves_data(tmp_pat
 
         # Step 3: Destructive downgrade remains prohibited
         with pytest.raises(RuntimeError, match="Destructive downgrade prohibited"):
-            command.downgrade(cfg, "0001_demo")
+            command.downgrade(cfg, "0002_hardening")
     finally:
         engine.dispose()
 

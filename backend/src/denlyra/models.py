@@ -90,6 +90,7 @@ class Appointment(Base):
     status: Mapped[str] = mapped_column(String(24), nullable=False, default="confirmed")
     reason_demo: Mapped[str] = mapped_column(String(260), nullable=False, default="Demo appointment")
     idempotency_key: Mapped[str | None] = mapped_column(String(120))
+    rescheduled_from_id: Mapped[str | None] = mapped_column(String(36))
     created_at: Mapped[datetime] = created_col()
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     __table_args__ = (
@@ -210,9 +211,53 @@ class PlanTask(Base):
     plan_version_id: Mapped[str] = mapped_column(ForeignKey("plan_version.id"), nullable=False)
     title: Mapped[str] = mapped_column(String(160), nullable=False)
     phase: Mapped[str] = mapped_column(String(100), nullable=False, default="Demo phase")
+    owner_role: Mapped[str] = mapped_column(String(30), nullable=False, default="dentist")
+    due_at: Mapped[datetime | None] = mapped_column(DateTime())
     depends_on_task_id: Mapped[str | None] = mapped_column(ForeignKey("plan_task.id"))
+    reassessed_from_task_id: Mapped[str | None] = mapped_column(String(36))
+    completion_evidence_note: Mapped[str | None] = mapped_column(String(300))
     status: Mapped[str] = mapped_column(String(22), nullable=False, default="pending")
     completed_at: Mapped[datetime | None] = mapped_column(DateTime())
+
+
+class PlanTaskDependency(Base):
+    __tablename__ = "plan_task_dependency"
+    id: Mapped[str] = id_col()
+    plan_version_id: Mapped[str] = mapped_column(ForeignKey("plan_version.id"), nullable=False)
+    task_id: Mapped[str] = mapped_column(ForeignKey("plan_task.id"), nullable=False)
+    depends_on_task_id: Mapped[str] = mapped_column(ForeignKey("plan_task.id"), nullable=False)
+    created_at: Mapped[datetime] = created_col()
+    __table_args__ = (
+        UniqueConstraint("task_id", "depends_on_task_id", name="uq_plan_task_dep_edge"),
+    )
+
+
+class TreatmentCoordinationLink(Base):
+    __tablename__ = "treatment_coordination_link"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    task_id: Mapped[str] = mapped_column(ForeignKey("plan_task.id"), nullable=False)
+    target_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    target_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    requires_verified_lab: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    created_at: Mapped[datetime] = created_col()
+    __table_args__ = (
+        UniqueConstraint("task_id", "target_type", "target_id", name="uq_task_coord_link"),
+    )
+
+
+class PlanReassessment(Base):
+    __tablename__ = "plan_reassessment"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    plan_id: Mapped[str] = mapped_column(ForeignKey("treatment_plan.id"), nullable=False)
+    from_version_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    to_version_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    source_task_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    followup_task_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    reason: Mapped[str] = mapped_column(String(400), nullable=False)
+    actor_demo: Mapped[str] = mapped_column(String(100), nullable=False)
+    created_at: Mapped[datetime] = created_col()
 
 
 class LabCase(Base):
@@ -267,6 +312,51 @@ class PaymentAllocation(Base):
     amount_vnd: Mapped[int] = mapped_column(Integer, nullable=False)
     created_at: Mapped[datetime] = created_col()
     __table_args__ = (CheckConstraint("amount_vnd > 0", name="ck_allocation_positive"),)
+
+
+class PaymentRefund(Base):
+    __tablename__ = "payment_refund"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    payment_id: Mapped[str] = mapped_column(ForeignKey("payment.id"), nullable=False)
+    patient_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    amount_vnd: Mapped[int] = mapped_column(Integer, nullable=False)
+    reason: Mapped[str] = mapped_column(String(260), nullable=False)
+    actor_demo: Mapped[str] = mapped_column(String(100), nullable=False)
+    created_at: Mapped[datetime] = created_col()
+    __table_args__ = (CheckConstraint("amount_vnd > 0", name="ck_refund_positive"),)
+
+
+class OutboxEvent(Base):
+    __tablename__ = "outbox_event"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    event_type: Mapped[str] = mapped_column(String(80), nullable=False)
+    aggregate_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    aggregate_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    payload_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    created_at: Mapped[datetime] = created_col()
+
+
+class ClinicalDocumentSnapshot(Base):
+    __tablename__ = "clinical_document_snapshot"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    encounter_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    note_id: Mapped[str] = mapped_column(ForeignKey("clinical_note.id"), nullable=False)
+    note_revision_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    parent_snapshot_id: Mapped[str | None] = mapped_column(String(36))
+    amendment_reason: Mapped[str | None] = mapped_column(String(300))
+    status: Mapped[str] = mapped_column(String(40), nullable=False, default="ready_for_signature")
+    canonical_json: Mapped[str] = mapped_column(Text, nullable=False)
+    canonical_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    manifest_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    signer_staff_id: Mapped[str | None] = mapped_column(String(36))
+    provider_receipt_json: Mapped[str | None] = mapped_column(Text)
+    entered_in_error_reason: Mapped[str | None] = mapped_column(String(300))
+    entered_in_error_by: Mapped[str | None] = mapped_column(String(100))
+    created_at: Mapped[datetime] = created_col()
 
 
 class AuditEvent(Base):

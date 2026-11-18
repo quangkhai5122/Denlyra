@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from datetime import timezone
 import hashlib
+import hmac
 import json
 
 from fastapi import HTTPException
@@ -15,15 +16,24 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from . import models as m
+from . import models as m, signing
 from .schemas import (
     AppointmentCreate,
+    AppointmentReschedule,
+    DocumentAddendumCreate,
+    DocumentEnterInErrorRequest,
+    DocumentSnapshotCreate,
+    DocumentSyntheticSignRequest,
     FormOfficialExportRequest,
     FormTemplateCreate,
     FormValidatePreviewRequest,
+    PlanReassessmentCreate,
+    RefundCreate,
     ResourceCreateRequest,
     StaffCreateRequest,
+    TaskCoordinationLinkCreate,
     TaskCreate,
+    TaskDependenciesUpdate,
 )
 
 
@@ -92,6 +102,25 @@ def audit(
             subject_type=typ,
             subject_id=subject_id,
             metadata_json=json.dumps(extra or {}, ensure_ascii=False),
+        )
+    )
+
+
+def outbox(
+    db: Session,
+    clinic_id: str,
+    event_type: str,
+    aggregate_type: str,
+    aggregate_id: str,
+    payload: dict | None = None,
+) -> None:
+    db.add(
+        m.OutboxEvent(
+            clinic_id=clinic_id,
+            event_type=event_type,
+            aggregate_type=aggregate_type,
+            aggregate_id=aggregate_id,
+            payload_json=json.dumps(payload or {}, ensure_ascii=False),
         )
     )
 
@@ -233,6 +262,7 @@ def schedule(
             item.id,
             {"resources": resource_keys},
         )
+        outbox(db, clinic_id, "appointment.created", "appointment", item.id, {"patient_id": item.patient_id})
         db.commit()
         return item
     except IntegrityError as exc:
@@ -257,8 +287,107 @@ def cancel_appointment(db: Session, clinic_id: str, appointment_id: str, actor: 
     ).all():
         booking.state = "cancelled"
     audit(db, clinic_id, actor, "appointment.cancelled", "appointment", item.id)
+    outbox(db, clinic_id, "appointment.cancelled", "appointment", item.id)
     db.commit()
     return item
+
+
+def reschedule_appointment(
+    db: Session,
+    clinic_id: str,
+    appointment_id: str,
+    data: AppointmentReschedule,
+    actor: str,
+):
+    old = ensure(db, m.Appointment, appointment_id, clinic_id)
+    if old.status == "cancelled":
+        raise HTTPException(409, "Cannot reschedule an already cancelled appointment")
+    new_practitioner_id = data.practitioner_id or old.practitioner_id
+    new_chair_id = data.chair_id or old.chair_id
+    doctor(db, new_practitioner_id, clinic_id)
+    chair(db, new_chair_id, clinic_id)
+    unique_eq = sorted(set(data.equipment_ids))
+    for eq_id in unique_eq:
+        equipment(db, eq_id, clinic_id)
+
+    start, end = dt_utc_naive(data.start_at), dt_utc_naive(data.end_at)
+    resource_keys = [
+        f"dentist:{new_practitioner_id}",
+        f"chair:{new_chair_id}",
+        *[f"device:{eq_id}" for eq_id in unique_eq],
+    ]
+    try:
+        old.status = "cancelled"
+        old.version += 1
+        for booking in db.scalars(
+            select(m.ResourceBooking).where(
+                m.ResourceBooking.clinic_id == clinic_id,
+                m.ResourceBooking.appointment_id == old.id,
+                m.ResourceBooking.state == "active",
+            )
+        ).all():
+            booking.state = "cancelled"
+        db.flush()
+
+        overlaps = db.scalars(
+            select(m.ResourceBooking).where(
+                m.ResourceBooking.clinic_id == clinic_id,
+                m.ResourceBooking.state == "active",
+                m.ResourceBooking.resource_key.in_(resource_keys),
+                m.ResourceBooking.start_at < end,
+                m.ResourceBooking.end_at > start,
+            )
+        ).first()
+        if overlaps:
+            db.rollback()
+            raise HTTPException(409, "Time conflict on target slot; original appointment preserved")
+
+        replacement = m.Appointment(
+            clinic_id=clinic_id,
+            patient_id=old.patient_id,
+            practitioner_id=new_practitioner_id,
+            chair_id=new_chair_id,
+            start_at=start,
+            end_at=end,
+            reason_demo=data.reason_demo,
+            rescheduled_from_id=old.id,
+        )
+        db.add(replacement)
+        db.flush()
+        for key in resource_keys:
+            db.add(
+                m.ResourceBooking(
+                    clinic_id=clinic_id,
+                    appointment_id=replacement.id,
+                    resource_key=key,
+                    start_at=start,
+                    end_at=end,
+                )
+            )
+        audit(
+            db,
+            clinic_id,
+            actor,
+            "appointment.rescheduled",
+            "appointment",
+            replacement.id,
+            {"rescheduled_from_id": old.id},
+        )
+        outbox(
+            db,
+            clinic_id,
+            "appointment.rescheduled",
+            "appointment",
+            replacement.id,
+            {"previous_appointment_id": old.id, "patient_id": old.patient_id},
+        )
+        db.commit()
+        return replacement
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(
+            409, "Time conflict on target slot; original appointment preserved"
+        ) from exc
 
 
 def create_note(
@@ -374,25 +503,204 @@ def get_plan_version(db: Session, clinic_id: str, plan_id: str):
     return plan, version
 
 
+def _validate_acyclic_dependencies(
+    db: Session,
+    plan_version_id: str,
+    target_task_id: str,
+    new_dep_ids: list[str],
+) -> None:
+    tasks = db.scalars(
+        select(m.PlanTask).where(m.PlanTask.plan_version_id == plan_version_id)
+    ).all()
+    valid_ids = {t.id for t in tasks} | {target_task_id}
+    for dep_id in new_dep_ids:
+        if dep_id == target_task_id:
+            raise HTTPException(422, "Cycle detected: task cannot depend on itself")
+        if dep_id not in valid_ids:
+            raise HTTPException(422, "Dependency must exist in this plan version")
+
+    adj: dict[str, set[str]] = {tid: set() for tid in valid_ids}
+    for t in tasks:
+        if t.depends_on_task_id:
+            adj[t.id].add(t.depends_on_task_id)
+    existing_edges = db.scalars(
+        select(m.PlanTaskDependency).where(m.PlanTaskDependency.plan_version_id == plan_version_id)
+    ).all()
+    for edge in existing_edges:
+        adj.setdefault(edge.task_id, set()).add(edge.depends_on_task_id)
+    for dep_id in new_dep_ids:
+        adj.setdefault(target_task_id, set()).add(dep_id)
+
+    state: dict[str, int] = {}  # 0=unvisited, 1=visiting, 2=done
+
+    def dfs(node: str) -> None:
+        state[node] = 1
+        for nxt in adj.get(node, set()):
+            st = state.get(nxt, 0)
+            if st == 1:
+                raise HTTPException(422, "Cycle detected in treatment plan task graph")
+            if st == 0:
+                dfs(nxt)
+        state[node] = 2
+
+    for node in list(adj.keys()):
+        if state.get(node, 0) == 0:
+            dfs(node)
+
+
 def add_task(db: Session, clinic_id: str, plan_id: str, data: TaskCreate, actor: str):
     plan, version = get_plan_version(db, clinic_id, plan_id)
     if version.status != "draft":
         raise HTTPException(409, "Reviewed plan version is immutable; create a new version")
+    dep_ids: list[str] = []
     if data.depends_on_task_id:
-        dependency = db.get(m.PlanTask, data.depends_on_task_id)
-        if not dependency or dependency.plan_version_id != version.id:
-            raise HTTPException(422, "Dependency must exist in this plan version")
+        dep_ids.append(data.depends_on_task_id)
+    for d_id in data.depends_on_task_ids:
+        if d_id not in dep_ids:
+            dep_ids.append(d_id)
+
+    task_id = m.uid()
+    if dep_ids:
+        _validate_acyclic_dependencies(db, version.id, task_id, dep_ids)
+
+    due_naive = dt_utc_naive(data.due_at) if data.due_at else None
     task = m.PlanTask(
+        id=task_id,
         plan_version_id=version.id,
         title=data.title,
         phase=data.phase,
-        depends_on_task_id=data.depends_on_task_id,
+        owner_role=data.owner_role,
+        due_at=due_naive,
+        depends_on_task_id=dep_ids[0] if dep_ids else None,
     )
     db.add(task)
     db.flush()
+    for dep_id in dep_ids:
+        db.add(
+            m.PlanTaskDependency(
+                plan_version_id=version.id,
+                task_id=task.id,
+                depends_on_task_id=dep_id,
+            )
+        )
     audit(db, clinic_id, actor, "plan.task_created", "plan_task", task.id)
     db.commit()
     return task
+
+
+def set_task_dependencies(
+    db: Session,
+    clinic_id: str,
+    task_id: str,
+    data: TaskDependenciesUpdate,
+    actor: str,
+):
+    task = db.get(m.PlanTask, task_id)
+    if task is None:
+        raise HTTPException(404, "Unknown task")
+    version = db.get(m.PlanVersion, task.plan_version_id)
+    ensure(db, m.TreatmentPlan, version.plan_id, clinic_id)
+    if version.status != "draft":
+        raise HTTPException(409, "Reviewed plan version is immutable; create a new version")
+
+    unique_deps = list(dict.fromkeys(data.depends_on_task_ids))
+    _validate_acyclic_dependencies(db, version.id, task.id, unique_deps)
+
+    existing = {
+        e.depends_on_task_id
+        for e in db.scalars(
+            select(m.PlanTaskDependency).where(m.PlanTaskDependency.task_id == task.id)
+        ).all()
+    }
+    for dep_id in unique_deps:
+        if dep_id not in existing:
+            db.add(
+                m.PlanTaskDependency(
+                    plan_version_id=version.id,
+                    task_id=task.id,
+                    depends_on_task_id=dep_id,
+                )
+            )
+    if not task.depends_on_task_id and unique_deps:
+        task.depends_on_task_id = unique_deps[0]
+    audit(
+        db,
+        clinic_id,
+        actor,
+        "plan.task_dependencies_updated",
+        "plan_task",
+        task.id,
+        {"depends_on_task_ids": unique_deps},
+    )
+    db.commit()
+    return task
+
+
+def link_task_coordination(
+    db: Session,
+    clinic_id: str,
+    task_id: str,
+    data: TaskCoordinationLinkCreate,
+    actor: str,
+) -> dict:
+    task = db.get(m.PlanTask, task_id)
+    if task is None:
+        raise HTTPException(404, "Unknown task")
+    version = db.get(m.PlanVersion, task.plan_version_id)
+    plan = ensure(db, m.TreatmentPlan, version.plan_id, clinic_id)
+
+    if data.target_type == "appointment":
+        appt = ensure(db, m.Appointment, data.target_id, clinic_id)
+        if appt.patient_id != plan.patient_id:
+            raise HTTPException(422, "Appointment belongs to a different patient")
+    elif data.target_type == "lab_case":
+        lab = ensure(db, m.LabCase, data.target_id, clinic_id)
+        if lab.patient_id != plan.patient_id:
+            raise HTTPException(422, "Lab case belongs to a different patient")
+    elif data.target_type == "charge":
+        chg = ensure(db, m.Charge, data.target_id, clinic_id)
+        if chg.patient_id != plan.patient_id:
+            raise HTTPException(422, "Charge belongs to a different patient")
+
+    link = m.TreatmentCoordinationLink(
+        clinic_id=clinic_id,
+        task_id=task.id,
+        target_type=data.target_type,
+        target_id=data.target_id,
+        requires_verified_lab=data.requires_verified_lab if data.target_type == "lab_case" else False,
+    )
+    db.add(link)
+    try:
+        db.flush()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(409, "Coordination link already exists") from exc
+
+    audit(
+        db,
+        clinic_id,
+        actor,
+        f"plan.task_linked_{data.target_type}",
+        "plan_task",
+        task.id,
+        {"target_id": data.target_id, "requires_verified_lab": link.requires_verified_lab},
+    )
+    outbox(
+        db,
+        clinic_id,
+        f"treatment.task_linked.{data.target_type}",
+        "plan_task",
+        task.id,
+        {"target_id": data.target_id},
+    )
+    db.commit()
+    return {
+        "id": link.id,
+        "task_id": link.task_id,
+        "target_type": link.target_type,
+        "target_id": link.target_id,
+        "requires_verified_lab": link.requires_verified_lab,
+    }
 
 
 def new_version(db: Session, clinic_id: str, plan_id: str, actor: str):
@@ -400,6 +708,9 @@ def new_version(db: Session, clinic_id: str, plan_id: str, actor: str):
     if current.status != "demo_reviewed":
         raise HTTPException(409, "Only a demo-reviewed version can be branched")
     items = db.scalars(select(m.PlanTask).where(m.PlanTask.plan_version_id == current.id)).all()
+    old_edges = db.scalars(
+        select(m.PlanTaskDependency).where(m.PlanTaskDependency.plan_version_id == current.id)
+    ).all()
     new = m.PlanVersion(plan_id=plan.id, number=plan.current_version + 1, status="draft")
     db.add(new)
     db.flush()
@@ -409,14 +720,25 @@ def new_version(db: Session, clinic_id: str, plan_id: str, actor: str):
             plan_version_id=new.id,
             title=old.title,
             phase=old.phase,
+            owner_role=old.owner_role,
+            due_at=old.due_at,
             status="pending",
         )
         db.add(replacement)
         db.flush()
         id_map[old.id] = replacement
     for old in items:
-        if old.depends_on_task_id:
+        if old.depends_on_task_id and old.depends_on_task_id in id_map:
             id_map[old.id].depends_on_task_id = id_map[old.depends_on_task_id].id
+    for edge in old_edges:
+        if edge.task_id in id_map and edge.depends_on_task_id in id_map:
+            db.add(
+                m.PlanTaskDependency(
+                    plan_version_id=new.id,
+                    task_id=id_map[edge.task_id].id,
+                    depends_on_task_id=id_map[edge.depends_on_task_id].id,
+                )
+            )
     plan.current_version += 1
     audit(
         db,
@@ -429,6 +751,143 @@ def new_version(db: Session, clinic_id: str, plan_id: str, actor: str):
     )
     db.commit()
     return new
+
+
+def reassess_plan(
+    db: Session,
+    clinic_id: str,
+    plan_id: str,
+    data: PlanReassessmentCreate,
+    actor: str,
+) -> dict:
+    plan, current = get_plan_version(db, clinic_id, plan_id)
+    if current.status != "demo_reviewed":
+        raise HTTPException(409, "Reassessment requires a reviewed current plan version")
+    items = db.scalars(select(m.PlanTask).where(m.PlanTask.plan_version_id == current.id)).all()
+    source_task = next((t for t in items if t.id == data.source_task_id), None)
+    if source_task is None:
+        raise HTTPException(422, "source_task_id must belong to the current plan version")
+
+    old_edges = db.scalars(
+        select(m.PlanTaskDependency).where(m.PlanTaskDependency.plan_version_id == current.id)
+    ).all()
+    new_ver = m.PlanVersion(
+        plan_id=plan.id,
+        number=plan.current_version + 1,
+        status="demo_reviewed",
+        reviewer_demo=actor,
+    )
+    db.add(new_ver)
+    db.flush()
+
+    id_map: dict[str, m.PlanTask] = {}
+    for old in items:
+        cloned = m.PlanTask(
+            plan_version_id=new_ver.id,
+            title=old.title,
+            phase=old.phase,
+            owner_role=old.owner_role,
+            due_at=old.due_at,
+            reassessed_from_task_id=old.reassessed_from_task_id,
+            completion_evidence_note=old.completion_evidence_note,
+            status=old.status,
+            completed_at=old.completed_at,
+        )
+        db.add(cloned)
+        db.flush()
+        id_map[old.id] = cloned
+        old_links = db.scalars(
+            select(m.TreatmentCoordinationLink).where(
+                m.TreatmentCoordinationLink.task_id == old.id
+            )
+        ).all()
+        for lnk in old_links:
+            db.add(
+                m.TreatmentCoordinationLink(
+                    clinic_id=clinic_id,
+                    task_id=cloned.id,
+                    target_type=lnk.target_type,
+                    target_id=lnk.target_id,
+                    requires_verified_lab=lnk.requires_verified_lab,
+                )
+            )
+
+    for old in items:
+        if old.depends_on_task_id and old.depends_on_task_id in id_map:
+            id_map[old.id].depends_on_task_id = id_map[old.depends_on_task_id].id
+    for edge in old_edges:
+        if edge.task_id in id_map and edge.depends_on_task_id in id_map:
+            db.add(
+                m.PlanTaskDependency(
+                    plan_version_id=new_ver.id,
+                    task_id=id_map[edge.task_id].id,
+                    depends_on_task_id=id_map[edge.depends_on_task_id].id,
+                )
+            )
+
+    mapped_source = id_map[source_task.id]
+    followup = m.PlanTask(
+        plan_version_id=new_ver.id,
+        title=data.followup_task_title,
+        phase=data.followup_phase,
+        owner_role=data.owner_role,
+        depends_on_task_id=mapped_source.id,
+        reassessed_from_task_id=mapped_source.id,
+        status="pending",
+    )
+    db.add(followup)
+    db.flush()
+    db.add(
+        m.PlanTaskDependency(
+            plan_version_id=new_ver.id,
+            task_id=followup.id,
+            depends_on_task_id=mapped_source.id,
+        )
+    )
+    event_row = m.PlanReassessment(
+        clinic_id=clinic_id,
+        plan_id=plan.id,
+        from_version_number=current.number,
+        to_version_number=new_ver.number,
+        source_task_id=source_task.id,
+        followup_task_id=followup.id,
+        reason=data.reason,
+        actor_demo=actor,
+    )
+    db.add(event_row)
+    plan.current_version = new_ver.number
+    audit(
+        db,
+        clinic_id,
+        actor,
+        "plan.reassessed_new_version",
+        "treatment_plan",
+        plan.id,
+        {"from": current.number, "to": new_ver.number, "followup_task_id": followup.id},
+    )
+    outbox(
+        db,
+        clinic_id,
+        "treatment.plan_reassessed",
+        "treatment_plan",
+        plan.id,
+        {"version": new_ver.number},
+    )
+    db.commit()
+    return {
+        "reassessment_id": event_row.id,
+        "plan_id": plan.id,
+        "previous_version_number": current.number,
+        "new_version_number": new_ver.number,
+        "followup_task": {
+            "id": followup.id,
+            "title": followup.title,
+            "phase": followup.phase,
+            "owner_role": followup.owner_role,
+            "status": followup.status,
+            "reassessed_from_task_id": followup.reassessed_from_task_id,
+        },
+    }
 
 
 def review_plan_demo(db: Session, clinic_id: str, plan_id: str, actor: str):
@@ -452,6 +911,35 @@ def review_plan_demo(db: Session, clinic_id: str, plan_id: str, actor: str):
     return version
 
 
+def _task_blocked_reasons(db: Session, task: m.PlanTask) -> list[str]:
+    reasons: list[str] = []
+    prereq_ids: set[str] = set()
+    if task.depends_on_task_id:
+        prereq_ids.add(task.depends_on_task_id)
+    for edge in db.scalars(
+        select(m.PlanTaskDependency).where(m.PlanTaskDependency.task_id == task.id)
+    ).all():
+        prereq_ids.add(edge.depends_on_task_id)
+
+    for pid in prereq_ids:
+        dep = db.get(m.PlanTask, pid)
+        if dep is None or dep.status != "completed":
+            reasons.append(f"prerequisite_incomplete:{pid}")
+
+    lab_links = db.scalars(
+        select(m.TreatmentCoordinationLink).where(
+            m.TreatmentCoordinationLink.task_id == task.id,
+            m.TreatmentCoordinationLink.target_type == "lab_case",
+            m.TreatmentCoordinationLink.requires_verified_lab.is_(True),
+        )
+    ).all()
+    for lnk in lab_links:
+        lab = db.get(m.LabCase, lnk.target_id)
+        if lab is None or lab.status != "verified":
+            reasons.append("lab_not_verified")
+    return reasons
+
+
 def complete_task_demo(db: Session, clinic_id: str, task_id: str, actor: str):
     task = db.get(m.PlanTask, task_id)
     if task is None:
@@ -462,15 +950,115 @@ def complete_task_demo(db: Session, clinic_id: str, task_id: str, actor: str):
         raise HTTPException(409, "Only the current demo-reviewed version can be progressed")
     if task.status == "completed":
         raise HTTPException(409, "Already completed")
-    if task.depends_on_task_id:
-        dependency = db.get(m.PlanTask, task.depends_on_task_id)
-        if dependency.status != "completed":
-            raise HTTPException(409, "Prerequisite task not completed")
+    blockers = _task_blocked_reasons(db, task)
+    if blockers:
+        raise HTTPException(409, f"Task blocked: {', '.join(blockers)}")
     task.status = "completed"
     task.completed_at = m.utcnow()
+    task.completion_evidence_note = f"Demo administrative completion by {actor}"
     audit(db, clinic_id, actor, "plan.task_demo_completed_NOT_procedure", "plan_task", task.id)
     db.commit()
     return task
+
+
+def get_plan_timeline(db: Session, clinic_id: str, plan_id: str) -> dict:
+    plan, version = get_plan_version(db, clinic_id, plan_id)
+    tasks = db.scalars(select(m.PlanTask).where(m.PlanTask.plan_version_id == version.id)).all()
+    now = m.utcnow()
+    tasks_out = []
+    for t in tasks:
+        dep_ids = [
+            e.depends_on_task_id
+            for e in db.scalars(
+                select(m.PlanTaskDependency).where(m.PlanTaskDependency.task_id == t.id)
+            ).all()
+        ]
+        if t.depends_on_task_id and t.depends_on_task_id not in dep_ids:
+            dep_ids.insert(0, t.depends_on_task_id)
+        links = db.scalars(
+            select(m.TreatmentCoordinationLink).where(m.TreatmentCoordinationLink.task_id == t.id)
+        ).all()
+        blockers = [] if t.status == "completed" else _task_blocked_reasons(db, t)
+        overdue = bool(t.due_at and t.status != "completed" and t.due_at < now)
+        tasks_out.append(
+            {
+                "id": t.id,
+                "title": t.title,
+                "phase": t.phase,
+                "owner_role": t.owner_role,
+                "status": t.status,
+                "due_at": t.due_at.isoformat() + "Z" if t.due_at else None,
+                "is_overdue": overdue,
+                "depends_on_task_ids": dep_ids,
+                "reassessed_from_task_id": t.reassessed_from_task_id,
+                "blocked_reasons": blockers,
+                "links": [
+                    {
+                        "target_type": lnk.target_type,
+                        "target_id": lnk.target_id,
+                        "requires_verified_lab": lnk.requires_verified_lab,
+                    }
+                    for lnk in links
+                ],
+                "completed_at": t.completed_at.isoformat() + "Z" if t.completed_at else None,
+                "completion_evidence_note": t.completion_evidence_note,
+            }
+        )
+
+    charges_sum = db.scalar(
+        select(func.coalesce(func.sum(m.Charge.amount_vnd), 0)).where(
+            m.Charge.clinic_id == clinic_id, m.Charge.patient_id == plan.patient_id
+        )
+    )
+    payments_sum = db.scalar(
+        select(func.coalesce(func.sum(m.Payment.amount_vnd), 0)).where(
+            m.Payment.clinic_id == clinic_id, m.Payment.patient_id == plan.patient_id
+        )
+    )
+    refunds_sum = db.scalar(
+        select(func.coalesce(func.sum(m.PaymentRefund.amount_vnd), 0)).where(
+            m.PaymentRefund.clinic_id == clinic_id, m.PaymentRefund.patient_id == plan.patient_id
+        )
+    )
+    reassessments = db.scalars(
+        select(m.PlanReassessment)
+        .where(m.PlanReassessment.plan_id == plan.id)
+        .order_by(m.PlanReassessment.created_at)
+    ).all()
+    return {
+        "plan": {
+            "id": plan.id,
+            "patient_id": plan.patient_id,
+            "title": plan.title,
+            "current_version": plan.current_version,
+        },
+        "version": {
+            "id": version.id,
+            "number": version.number,
+            "status": version.status,
+            "reviewer_demo": version.reviewer_demo,
+        },
+        "tasks": tasks_out,
+        "reassessments": [
+            {
+                "id": r.id,
+                "from_version_number": r.from_version_number,
+                "to_version_number": r.to_version_number,
+                "source_task_id": r.source_task_id,
+                "followup_task_id": r.followup_task_id,
+                "reason": r.reason,
+            }
+            for r in reassessments
+        ],
+        "financial_summary": {
+            "charged_vnd": int(charges_sum or 0),
+            "paid_gross_vnd": int(payments_sum or 0),
+            "refunded_vnd": int(refunds_sum or 0),
+            "net_collected_vnd": int((payments_sum or 0) - (refunds_sum or 0)),
+            "implies_clinical_completion": False,
+        },
+        "synthetic_only": True,
+    }
 
 
 LAB_TRANSITIONS = {
@@ -500,6 +1088,7 @@ def set_lab_status(db: Session, clinic_id: str, lab_id: str, next_status: str, a
         item.id,
         {"from": before, "to": next_status},
     )
+    outbox(db, clinic_id, f"lab.{next_status}", "lab_case", item.id)
     db.commit()
     return item
 
@@ -535,7 +1124,12 @@ def allocate(
             m.PaymentAllocation.payment_id == payment.id
         )
     )
-    if a + amount_vnd > charge.amount_vnd or b + amount_vnd > payment.amount_vnd:
+    r = db.scalar(
+        select(func.coalesce(func.sum(m.PaymentRefund.amount_vnd), 0)).where(
+            m.PaymentRefund.payment_id == payment.id
+        )
+    )
+    if a + amount_vnd > charge.amount_vnd or b + r + amount_vnd > payment.amount_vnd:
         raise HTTPException(409, "Allocation exceeds charge or available payment")
     item = m.PaymentAllocation(
         charge_id=charge.id,
@@ -547,6 +1141,299 @@ def allocate(
     audit(db, clinic_id, actor, "payment.demo_allocated", "payment_allocation", item.id)
     db.commit()
     return item
+
+
+def refund_payment(
+    db: Session,
+    clinic_id: str,
+    payment_id: str,
+    data: RefundCreate,
+    actor: str,
+) -> m.PaymentRefund:
+    payment = db.scalar(
+        select(m.Payment)
+        .where(m.Payment.id == payment_id, m.Payment.clinic_id == clinic_id)
+        .with_for_update()
+    )
+    if payment is None:
+        raise HTTPException(404, "Payment not found in this clinic")
+    allocated = db.scalar(
+        select(func.coalesce(func.sum(m.PaymentAllocation.amount_vnd), 0)).where(
+            m.PaymentAllocation.payment_id == payment.id
+        )
+    )
+    refunded = db.scalar(
+        select(func.coalesce(func.sum(m.PaymentRefund.amount_vnd), 0)).where(
+            m.PaymentRefund.payment_id == payment.id
+        )
+    )
+    if allocated + refunded + data.amount_vnd > payment.amount_vnd:
+        raise HTTPException(409, "Refund exceeds unallocated available payment balance")
+    item = m.PaymentRefund(
+        clinic_id=clinic_id,
+        payment_id=payment.id,
+        patient_id=payment.patient_id,
+        amount_vnd=data.amount_vnd,
+        reason=data.reason.strip(),
+        actor_demo=actor,
+    )
+    db.add(item)
+    db.flush()
+    audit(
+        db,
+        clinic_id,
+        actor,
+        "finance.payment_refunded_demo",
+        "payment_refund",
+        item.id,
+        {"payment_id": payment.id, "amount_vnd": data.amount_vnd},
+    )
+    outbox(
+        db,
+        clinic_id,
+        "finance.payment_refunded",
+        "payment_refund",
+        item.id,
+        {"payment_id": payment.id, "amount_vnd": data.amount_vnd},
+    )
+    db.commit()
+    return item
+
+
+def create_document_snapshot(
+    db: Session,
+    clinic_id: str,
+    data: DocumentSnapshotCreate,
+    actor: str,
+    parent_snapshot_id: str | None = None,
+    amendment_reason: str | None = None,
+) -> m.ClinicalDocumentSnapshot:
+    note = ensure(db, m.ClinicalNote, data.note_id, clinic_id)
+    if note.latest_revision != data.expected_revision:
+        raise HTTPException(409, "Stale note revision: cannot create document snapshot")
+    rev = db.scalar(
+        select(m.NoteRevision).where(
+            m.NoteRevision.note_id == note.id,
+            m.NoteRevision.revision_no == data.expected_revision,
+        )
+    )
+    if rev is None:
+        raise HTTPException(404, "Note revision not found")
+    if data.template_id:
+        ensure(db, m.FormTemplateVersion, data.template_id, clinic_id)
+
+    payload = {
+        "clinic_id": clinic_id,
+        "encounter_id": note.encounter_id,
+        "note_id": note.id,
+        "note_revision_no": rev.revision_no,
+        "content": rev.content,
+        "template_id": data.template_id,
+        "parent_snapshot_id": parent_snapshot_id,
+        "amendment_reason": amendment_reason,
+    }
+    canonical_json, _, canonical_sha256 = signing.canonicalize_document_payload(payload)
+    manifest_input = json.dumps(
+        {
+            "canonical_sha256": canonical_sha256,
+            "encounter_id": note.encounter_id,
+            "note_id": note.id,
+            "revision": rev.revision_no,
+            "attachments": [],
+        },
+        sort_keys=True,
+    ).encode("utf-8")
+    manifest_sha256 = hashlib.sha256(manifest_input).hexdigest()
+
+    snap = m.ClinicalDocumentSnapshot(
+        clinic_id=clinic_id,
+        encounter_id=note.encounter_id,
+        note_id=note.id,
+        note_revision_no=rev.revision_no,
+        parent_snapshot_id=parent_snapshot_id,
+        amendment_reason=amendment_reason,
+        status="ready_for_signature",
+        canonical_json=canonical_json,
+        canonical_sha256=canonical_sha256,
+        manifest_sha256=manifest_sha256,
+    )
+    db.add(snap)
+    db.flush()
+    audit(
+        db,
+        clinic_id,
+        actor,
+        "clinical_doc.snapshot_prepared",
+        "clinical_document_snapshot",
+        snap.id,
+        {"canonical_sha256": canonical_sha256},
+    )
+    db.commit()
+    return snap
+
+
+def sign_document_snapshot_synthetic(
+    db: Session,
+    clinic_id: str,
+    snapshot_id: str,
+    signer_staff_id: str,
+    actor: str,
+    secret: str,
+    data: DocumentSyntheticSignRequest,
+) -> dict:
+    snap = ensure(db, m.ClinicalDocumentSnapshot, snapshot_id, clinic_id)
+    if data.mode == "legal_authenticated":
+        audit(
+            db,
+            clinic_id,
+            actor,
+            "clinical_doc.legal_sign_blocked",
+            "clinical_document_snapshot",
+            snap.id,
+        )
+        db.commit()
+        raise HTTPException(
+            409,
+            "Real legal e-signature ('authenticated') is blocked until NEEDS_CLINICAL_REVIEW.md gates pass",
+        )
+    if snap.status != "ready_for_signature":
+        raise HTTPException(409, f"Snapshot in status '{snap.status}' cannot be signed")
+
+    note = ensure(db, m.ClinicalNote, snap.note_id, clinic_id)
+    if note.latest_revision != snap.note_revision_no:
+        raise HTTPException(
+            409, "Underlying clinical note changed concurrently; prepare a fresh snapshot"
+        )
+    if not hmac.compare_digest(snap.canonical_sha256, data.expected_sha256):
+        raise HTTPException(409, "Canonical content SHA256 mismatch (NEG-03)")
+
+    provider = signing.FakeSyntheticSignatureProvider(secret)
+    receipt = provider.sign_snapshot(
+        canonical_bytes=snap.canonical_json.encode("utf-8"),
+        signer_staff_id=signer_staff_id,
+        clinic_id=clinic_id,
+        simulate_failure=data.simulate_failure,
+    )
+    snap.signer_staff_id = signer_staff_id
+    snap.provider_receipt_json = json.dumps(receipt.__dict__, ensure_ascii=False, sort_keys=True)
+    snap.status = "synthetic_signed_NOT_legal"
+    if note.status == "draft":
+        note.status = "demo_locked"
+        note.locked_digest = snap.canonical_sha256
+    audit(
+        db,
+        clinic_id,
+        actor,
+        "clinical_doc.synthetic_sealed_NOT_legal",
+        "clinical_document_snapshot",
+        snap.id,
+        {"canonical_sha256": snap.canonical_sha256, "provider": receipt.provider_id},
+    )
+    db.commit()
+    return _serialize_snapshot(snap)
+
+
+def verify_document_snapshot(
+    db: Session, clinic_id: str, snapshot_id: str, secret: str
+) -> dict:
+    snap = ensure(db, m.ClinicalDocumentSnapshot, snapshot_id, clinic_id)
+    if not snap.provider_receipt_json:
+        return {
+            "snapshot_id": snap.id,
+            "status": snap.status,
+            "integrity_verified": False,
+            "legal_signature_valid": False,
+        }
+    receipt_dict = json.loads(snap.provider_receipt_json)
+    receipt = signing.SignatureReceipt(**receipt_dict)
+    provider = signing.FakeSyntheticSignatureProvider(secret)
+    ok = provider.verify_receipt(snap.canonical_json.encode("utf-8"), receipt, clinic_id)
+    return {
+        "snapshot_id": snap.id,
+        "status": snap.status,
+        "canonical_sha256": snap.canonical_sha256,
+        "manifest_sha256": snap.manifest_sha256,
+        "integrity_verified": ok,
+        "legal_signature_valid": False,
+        "synthetic_only": True,
+    }
+
+
+def create_document_addendum(
+    db: Session,
+    clinic_id: str,
+    parent_snapshot_id: str,
+    data: DocumentAddendumCreate,
+    actor: str,
+) -> dict:
+    parent = ensure(db, m.ClinicalDocumentSnapshot, parent_snapshot_id, clinic_id)
+    if parent.status != "synthetic_signed_NOT_legal":
+        raise HTTPException(409, "Addendum requires a sealed parent document snapshot")
+    addendum_note = create_note(
+        db=db,
+        clinic_id=clinic_id,
+        encounter_id=parent.encounter_id,
+        content=data.content,
+        actor=actor,
+        parent_note_id=parent.note_id,
+    )
+    snap = create_document_snapshot(
+        db=db,
+        clinic_id=clinic_id,
+        data=DocumentSnapshotCreate(note_id=addendum_note.id, expected_revision=1),
+        actor=actor,
+        parent_snapshot_id=parent.id,
+        amendment_reason=data.amendment_reason.strip(),
+    )
+    return _serialize_snapshot(snap)
+
+
+def enter_document_in_error(
+    db: Session,
+    clinic_id: str,
+    snapshot_id: str,
+    data: DocumentEnterInErrorRequest,
+    actor: str,
+) -> dict:
+    snap = ensure(db, m.ClinicalDocumentSnapshot, snapshot_id, clinic_id)
+    if snap.status == "entered_in_error":
+        raise HTTPException(409, "Document snapshot already marked entered_in_error")
+    snap.status = "entered_in_error"
+    snap.entered_in_error_reason = data.reason.strip()
+    snap.entered_in_error_by = actor
+    audit(
+        db,
+        clinic_id,
+        actor,
+        "clinical_doc.entered_in_error",
+        "clinical_document_snapshot",
+        snap.id,
+        {"reason": snap.entered_in_error_reason},
+    )
+    db.commit()
+    return _serialize_snapshot(snap)
+
+
+def _serialize_snapshot(snap: m.ClinicalDocumentSnapshot) -> dict:
+    return {
+        "id": snap.id,
+        "clinic_id": snap.clinic_id,
+        "encounter_id": snap.encounter_id,
+        "note_id": snap.note_id,
+        "note_revision_no": snap.note_revision_no,
+        "parent_snapshot_id": snap.parent_snapshot_id,
+        "amendment_reason": snap.amendment_reason,
+        "status": snap.status,
+        "canonical_json": snap.canonical_json,
+        "canonical_sha256": snap.canonical_sha256,
+        "manifest_sha256": snap.manifest_sha256,
+        "signer_staff_id": snap.signer_staff_id,
+        "entered_in_error_reason": snap.entered_in_error_reason,
+        "entered_in_error_by": snap.entered_in_error_by,
+        "legal_signature_valid": False,
+        "synthetic_only": True,
+        "created_at": snap.created_at.isoformat() + "Z",
+    }
 
 
 def register_form_template(
@@ -711,7 +1598,6 @@ def validate_form_preview(
             if val_empty and f.required_when == "always":
                 missing_required.append(f.field_code)
         else:
-            # explicit_negative or not_applicable
             normalized[f.field_code] = {"state": entry.state, "value": entry.value}
 
     audit(

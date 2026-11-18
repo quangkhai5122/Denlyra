@@ -70,6 +70,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
     },
     "plan.write": {"medical_director", "dentist", "treatment_coordinator"},
     "plan.review": {"medical_director", "dentist"},
+    "plan.reassess": {"medical_director", "dentist"},
     "plan.complete_task": {
         "medical_director", "dentist", "assistant", "treatment_coordinator",
     },
@@ -81,8 +82,12 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
     "finance.read": {"clinic_owner", "finance", "receptionist", "treatment_coordinator"},
     "finance.write": {"clinic_owner", "finance", "receptionist"},
     "finance.allocate": {"clinic_owner", "finance"},
+    "finance.refund": {"clinic_owner", "finance"},
     "clinical_form.read": {"clinic_owner", "medical_director", "dentist"},
     "clinical_form.write": {"clinic_owner", "medical_director", "dentist"},
+    "clinical_doc.read": {"clinic_owner", "medical_director", "dentist"},
+    "clinical_doc.write": {"medical_director", "dentist"},
+    "clinical_doc.sign": {"medical_director", "dentist"},
     "signed_url.create": {"clinic_owner", "medical_director", "dentist"},
     "signed_url.consume": {"clinic_owner", "medical_director", "dentist"},
 }

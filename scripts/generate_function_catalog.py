@@ -265,10 +265,11 @@ OPS-013|P2|Offline continuity policy and safe sync design|No last-write-wins for
 
 IMPLEMENTED = {
     "ORG-002", "ORG-003", "ORG-004", "ORG-005", "ORG-006", "PAT-001", "SCH-002", "SCH-003",
-    "SCH-004", "SCH-007", "EMR-001", "EMR-002", "EMR-004", "EMR-005", "EMR-008", "EMR-017",
-    "TRT-001", "TRT-002", "TRT-003", "TRT-005", "TRT-006", "LAB-001", "LAB-002", "ODN-001",
-    "ODN-002", "ODN-003", "FIN-003", "FIN-004", "FIN-005", "SEC-001", "SEC-002", "OPS-001",
-    "OPS-002",
+    "SCH-004", "SCH-005", "SCH-007", "SCH-013", "EMR-001", "EMR-002", "EMR-004", "EMR-005",
+    "EMR-006", "EMR-007", "EMR-008", "EMR-017", "TRT-001", "TRT-002", "TRT-003", "TRT-005",
+    "TRT-006", "TRT-007", "TRT-008", "TRT-009", "TRT-010", "TRT-013", "LAB-001", "LAB-002",
+    "LAB-009", "ODN-001", "ODN-002", "ODN-003", "FIN-003", "FIN-004", "FIN-005", "FIN-006",
+    "INT-011", "SEC-001", "SEC-002", "SEC-004", "OPS-001", "OPS-002", "OPS-004",
 }
 # The codes marked "D" represent synthetic demo behavior ONLY, not production implementations.
 

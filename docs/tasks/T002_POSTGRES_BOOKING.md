@@ -14,5 +14,5 @@ Confirm that two concurrent requests cannot occupy same doctor/chair/time, witho
 - Tested cancellation preserving history, adjacent slots, overlapping equipment resources, different clinics and idempotent retries.
 
 ## Acceptance
-- Implemented and verified on SQLite + offline PostgreSQL DDL.
-- **Remaining gate to close T002:** Run `pytest backend/tests/test_scheduling_concurrency.py` with `DENLYRA_TEST_POSTGRES_URL` pointing to a live disposable PostgreSQL 16 instance to verify `no_overlapping_active_resource_booking` under concurrent PostgreSQL connections. SQLite tests alone do not satisfy final PostgreSQL acceptance.
+- Implemented and verified on SQLite + offline PostgreSQL DDL, with automated live PostgreSQL verifier (`scripts/verify_postgres_live.py`) and GitHub Actions `postgres-concurrency-tests` (`postgres:16` service container in `.github/workflows/ci.yml`).
+- **Remaining gate to close T002:** Inspect remote GitHub Actions `postgres-concurrency-tests` run or execute `python scripts/verify_postgres_live.py` with `DENLYRA_TEST_POSTGRES_URL` pointing to a live disposable PostgreSQL 16 instance. SQLite tests alone do not satisfy final PostgreSQL acceptance.

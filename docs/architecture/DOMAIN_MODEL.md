@@ -44,21 +44,21 @@ Version 0.1 · Owner: software/domain architect + dental clinical lead · Status
 | INV-003 | Two active bookings for same chair/time impossible | PostgreSQL exclusion + SQLite trigger | DDL + SQLite trigger + 2-connection race test; live PG server pending |
 | INV-004 | Clinician, chair and equipment acquired atomically | DB transaction + exclusion | Yes (doctor+chair+equipment atomic rollback) |
 | INV-005 | Cancellation frees resource, retains event history | service + audit | Yes |
-| INV-006 | Signed clinical artifact immutable | archive + signature verification | Demo lock only |
+| INV-006 | Signed clinical artifact immutable | archive + signature verification | Synthetic snapshot + fake receipt verified (`T004`); legal signing gated |
 | INV-007 | Draft editing checks expected revision | service + optimistic version | Yes |
-| INV-008 | Corrections are addenda with parent link | immutable note model | Demo only |
-| INV-009 | Plan reviewed version frozen | version state machine | Demo only |
-| INV-010 | Task dependencies valid within same plan version | FK + service | Yes |
-| INV-011 | Task cannot complete before prerequisite | service | Yes |
-| INV-012 | Plan copy preserves dependency edges and leaves old untouched | version cloning | Yes |
-| INV-013 | Payment does not mark procedure complete | bounded context separation | Yes |
-| INV-014 | Allocation cannot exceed charge or available payment | transaction + locks | Sequential demo only |
+| INV-008 | Corrections are addenda with parent link | immutable note & snapshot model | Yes (note + canonical snapshot addenda & `entered_in_error`) |
+| INV-009 | Plan reviewed version frozen | version state machine | Yes |
+| INV-010 | Task dependencies valid & acyclic within same plan version | FK + DFS cycle check | Yes (multi-dependency DAG + cycle check, `T005`) |
+| INV-011 | Task cannot complete before all prerequisites & verified lab | service | Yes (multi-prereq + `requires_verified_lab`, `T005`) |
+| INV-012 | Plan copy/reassessment preserves dependency edges & history | version cloning + reassessment | Yes (`T005`) |
+| INV-013 | Payment/refund does not mark procedure complete | bounded context separation | Yes (`T005` append-only refunds + timeline separation) |
+| INV-014 | Allocation/refund cannot exceed charge or available payment | transaction + locks | Yes (bounded allocation + refund; PG row-lock pending `T008`) |
 | INV-015 | Lab state change follows approved transition matrix | state machine | Yes |
-| INV-016 | Delivered lab case is not automatically verified | state machine | Yes |
+| INV-016 | Delivered lab case is not automatically verified | state machine + task gate | Yes (`NEG-09` enforced on linked tasks) |
 | INV-017 | Patient/clinic B cannot access patient A via A's credentials | auth/policy tests | Synthetic token + RBAC/ABAC enforced (T001); live OIDC pending |
 | INV-018 | DICOM/images must be linked to verified patient and encounter | source manifest + mapping | Not implemented |
 | INV-019 | Paper scans retain legacy provenance | migration importer | Not implemented |
-| INV-020 | Form and signer evidence specific to exact approved version | signature adapter | Quarantined FormRegistry versioned; signer adapter pending |
+| INV-020 | Form and signer evidence specific to exact approved version | signature adapter | Quarantined FormRegistry (`T003`) + FakeSyntheticSignatureProvider (`T004`); legal signer gated |
 | INV-021 | Access revocation removes future clinical write permission | identity provider + staff active/token_version | Synthetic staff deactivation + JTI revocation enforced (T001) |
 | INV-022 | Missing allergy history != explicit negative | clinical structured types | Tri-state FormRegistry validator enforced (T003) |
 | INV-023 | Stock reservation != consumption | inventory ledger | Not implemented |

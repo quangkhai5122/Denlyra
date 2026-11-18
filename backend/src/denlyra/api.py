@@ -1,8 +1,8 @@
 """Loopback-only DEMO API. No legal EMR signing, medical decisions or real payments.
 
-Supports T001 verified token/session + deny-by-default RBAC/ABAC foundation (ADR-007).
-When Settings.require_auth=True (or when Authorization header is provided), actor identity,
-clinic scope, and role permissions are strictly verified from server-side membership.
+Supports T001 verified token/session + deny-by-default RBAC/ABAC foundation (ADR-007),
+T002 atomic multi-resource booking, T003 quarantined FormRegistry, T004 synthetic
+SignatureProvider envelope, and T005 multi-dependency Treatment Journey (ADR-008).
 Never deploy this API publicly or import real patient data.
 """
 from collections.abc import Generator
@@ -23,8 +23,13 @@ from .db import build_engine, init_demo_schema, session_factory
 from .schemas import (
     AllocationCreate,
     AppointmentCreate,
+    AppointmentReschedule,
     ChargeCreate,
     DentalFindingCreate,
+    DocumentAddendumCreate,
+    DocumentEnterInErrorRequest,
+    DocumentSnapshotCreate,
+    DocumentSyntheticSignRequest,
     EncounterCreate,
     FormOfficialExportRequest,
     FormTemplateCreate,
@@ -36,10 +41,14 @@ from .schemas import (
     PatientCreate,
     PaymentCreate,
     PlanCreate,
+    PlanReassessmentCreate,
+    RefundCreate,
     ResourceCreateRequest,
     SignedUrlCreateRequest,
     StaffCreateRequest,
+    TaskCoordinationLinkCreate,
     TaskCreate,
+    TaskDependenciesUpdate,
     TokenIssueRequest,
 )
 
@@ -136,14 +145,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 401,
                 "Authentication required: X-Demo-* headers are not accepted when require_auth is enabled",
             )
-        # Legacy synthetic demo selector fallback (R0 compatibility when require_auth=False)
         clinic_id = x_demo_clinic or svc.DEMO_CLINICS[0][0]
         clinic = db.get(m.Clinic, clinic_id)
         if not clinic or not clinic.demo_only:
             raise HTTPException(404, "Demo clinic not found")
         actor = (x_demo_actor or "demo-operator")[:100]
+        dentist_staff = db.scalar(
+            select(m.Staff).where(m.Staff.clinic_id == clinic_id, m.Staff.role == "dentist")
+        )
         legacy_principal = auth.Principal(
-            staff_id="demo-legacy",
+            staff_id=dentist_staff.id if dentist_staff else "demo-legacy",
             clinic_id=clinic_id,
             branch_id="branch-main",
             role="dentist",
@@ -169,6 +180,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         return _dep
 
+    def require_principal_perm(permission: str, audit_read: bool = False):
+        def _dep(ctx_tuple: tuple[Session, str, str, auth.Principal] = Depends(resolve_ctx)):
+            db, clinic_id, actor, principal = ctx_tuple
+            if principal.authenticated or cfg.require_auth:
+                auth.check_permission(
+                    db,
+                    principal,
+                    permission,
+                    subject_type=permission.split(".")[0],
+                    subject_id=clinic_id,
+                    audit_read=audit_read,
+                )
+            return db, clinic_id, actor, principal
+
+        return _dep
+
     @app.get("/health")
     def health():
         return {"status": "ok", "demo_only": True, "certified_emr": False}
@@ -183,6 +210,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "patient_portal": False,
             "production_auth": False,
             "synthetic_auth_foundation": True,
+            "synthetic_signature_test_double": True,
             "ai_diagnosis": False,
             "ai_sends_patient_data": False,
             "hospital_integration": False,
@@ -328,6 +356,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         db, clinic_id, actor = context
         return doc(svc.cancel_appointment(db, clinic_id, appointment_id, actor))
 
+    @app.post("/api/v1/appointments/{appointment_id}/reschedule", status_code=201)
+    def reschedule(
+        appointment_id: str,
+        payload: AppointmentReschedule,
+        context=Depends(require_perm("appointment.write")),
+    ):
+        db, clinic_id, actor = context
+        return doc(svc.reschedule_appointment(db, clinic_id, appointment_id, payload, actor))
+
     @app.get("/api/v1/encounters")
     def encounters(context=Depends(require_perm("encounter.read", audit_read=True))):
         db, clinic_id, _ = context
@@ -406,6 +443,67 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def lock_note(note_id: str, context=Depends(require_perm("note.lock"))):
         db, clinic_id, actor = context
         return doc(svc.lock_note_demo(db, clinic_id, note_id, actor))
+
+    @app.post("/api/v1/clinical-documents/snapshots", status_code=201)
+    def prepare_snapshot(
+        payload: DocumentSnapshotCreate,
+        context=Depends(require_perm("clinical_doc.write")),
+    ):
+        db, clinic_id, actor = context
+        snap = svc.create_document_snapshot(db, clinic_id, payload, actor)
+        return svc._serialize_snapshot(snap)
+
+    @app.get("/api/v1/clinical-documents/{snapshot_id}")
+    def get_snapshot(
+        snapshot_id: str,
+        context=Depends(require_perm("clinical_doc.read", audit_read=True)),
+    ):
+        db, clinic_id, _ = context
+        snap = svc.ensure(db, m.ClinicalDocumentSnapshot, snapshot_id, clinic_id)
+        return svc._serialize_snapshot(snap)
+
+    @app.post("/api/v1/clinical-documents/{snapshot_id}/sign-synthetic")
+    def sign_snapshot_synthetic(
+        snapshot_id: str,
+        payload: DocumentSyntheticSignRequest,
+        ctx_tuple=Depends(require_principal_perm("clinical_doc.sign")),
+    ):
+        db, clinic_id, actor, principal = ctx_tuple
+        return svc.sign_document_snapshot_synthetic(
+            db=db,
+            clinic_id=clinic_id,
+            snapshot_id=snapshot_id,
+            signer_staff_id=principal.staff_id,
+            actor=actor,
+            secret=cfg.auth_secret,
+            data=payload,
+        )
+
+    @app.get("/api/v1/clinical-documents/{snapshot_id}/verify")
+    def verify_snapshot(
+        snapshot_id: str,
+        context=Depends(require_perm("clinical_doc.read", audit_read=True)),
+    ):
+        db, clinic_id, _ = context
+        return svc.verify_document_snapshot(db, clinic_id, snapshot_id, cfg.auth_secret)
+
+    @app.post("/api/v1/clinical-documents/{snapshot_id}/addenda", status_code=201)
+    def create_snapshot_addendum(
+        snapshot_id: str,
+        payload: DocumentAddendumCreate,
+        context=Depends(require_perm("clinical_doc.write")),
+    ):
+        db, clinic_id, actor = context
+        return svc.create_document_addendum(db, clinic_id, snapshot_id, payload, actor)
+
+    @app.post("/api/v1/clinical-documents/{snapshot_id}/enter-in-error")
+    def mark_snapshot_entered_in_error(
+        snapshot_id: str,
+        payload: DocumentEnterInErrorRequest,
+        context=Depends(require_perm("clinical_doc.write")),
+    ):
+        db, clinic_id, actor = context
+        return svc.enter_document_in_error(db, clinic_id, snapshot_id, payload, actor)
 
     @app.get("/api/v1/encounters/{encounter_id}/findings")
     def list_dental_findings(
@@ -507,12 +605,35 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         ).all()
         return {"plan": doc(plan), "version": doc(version), "tasks": [doc(t) for t in tasks]}
 
+    @app.get("/api/v1/treatment-plans/{plan_id}/timeline")
+    def plan_timeline(plan_id: str, context=Depends(require_perm("plan.read"))):
+        db, clinic_id, _ = context
+        return svc.get_plan_timeline(db, clinic_id, plan_id)
+
     @app.post("/api/v1/treatment-plans/{plan_id}/tasks", status_code=201)
     def add_task(
         plan_id: str, payload: TaskCreate, context=Depends(require_perm("plan.write"))
     ):
         db, clinic_id, actor = context
         return doc(svc.add_task(db, clinic_id, plan_id, payload, actor))
+
+    @app.post("/api/v1/treatment-tasks/{task_id}/dependencies")
+    def update_task_dependencies(
+        task_id: str,
+        payload: TaskDependenciesUpdate,
+        context=Depends(require_perm("plan.write")),
+    ):
+        db, clinic_id, actor = context
+        return doc(svc.set_task_dependencies(db, clinic_id, task_id, payload, actor))
+
+    @app.post("/api/v1/treatment-tasks/{task_id}/links", status_code=201)
+    def link_task(
+        task_id: str,
+        payload: TaskCoordinationLinkCreate,
+        context=Depends(require_perm("plan.write")),
+    ):
+        db, clinic_id, actor = context
+        return svc.link_task_coordination(db, clinic_id, task_id, payload, actor)
 
     @app.post("/api/v1/treatment-plans/{plan_id}/demo-review")
     def review_plan(plan_id: str, context=Depends(require_perm("plan.review"))):
@@ -523,6 +644,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def plan_new_version(plan_id: str, context=Depends(require_perm("plan.write"))):
         db, clinic_id, actor = context
         return doc(svc.new_version(db, clinic_id, plan_id, actor))
+
+    @app.post("/api/v1/treatment-plans/{plan_id}/reassessments", status_code=201)
+    def plan_reassess(
+        plan_id: str,
+        payload: PlanReassessmentCreate,
+        context=Depends(require_perm("plan.reassess")),
+    ):
+        db, clinic_id, actor = context
+        return svc.reassess_plan(db, clinic_id, plan_id, payload, actor)
 
     @app.post("/api/v1/treatment-tasks/{task_id}/demo-complete")
     def complete_task(
@@ -622,6 +752,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 actor,
             )
         )
+
+    @app.post("/api/v1/finance/payments/{payment_id}/refunds", status_code=201)
+    def new_refund(
+        payment_id: str,
+        payload: RefundCreate,
+        context=Depends(require_perm("finance.refund")),
+    ):
+        db, clinic_id, actor = context
+        return doc(svc.refund_payment(db, clinic_id, payment_id, payload, actor))
 
     @app.get("/api/v1/clinical-forms/templates")
     def get_form_templates(context=Depends(require_perm("clinical_form.read"))):

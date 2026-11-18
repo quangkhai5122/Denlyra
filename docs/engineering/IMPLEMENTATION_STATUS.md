@@ -2,11 +2,13 @@
 
 ## Executed in starter
 - Synthetic demo UI: overview, clinics, patients, appointments, encounter draft, note version/demolock, plan/task version, FDI tooth-code event reference, lab status, finance charges/payment, audit event.
-- Python backend FastAPI+SQLAlchemy (23 tables, 48 OpenAPI operations). Demo SQLite automatically bootstrapped; clinic scoping on API reads; basic Host/Origin protections.
+- Python backend FastAPI+SQLAlchemy (29 tables, 60 OpenAPI operations). Demo SQLite automatically bootstrapped; clinic scoping on API reads; basic Host/Origin protections.
 - T001 synthetic token issuer (`HS256`), deny-by-default RBAC/ABAC policy engine, staff deactivation token invalidation, JTI revocation, one-time clinic-scoped signed URLs, and sensitive clinical read/denial audit trail (`ADR-007`).
-- T002 explicit frozen Alembic migration chain (`0001_demo` -> `0002_hardening`), atomic multi-resource (doctor + chair + equipment) booking, `IntegrityError` -> `409` rollback, idempotency keys, SQLite `BEFORE INSERT` overlap trigger, and 2-connection barrier concurrency test harness. Live PostgreSQL server execution remains unverified until a PostgreSQL instance is provisioned.
+- T002 explicit frozen Alembic migration chain (`0001_demo` -> `0002_hardening` -> `0003_treatment_and_signing`), atomic multi-resource (doctor + chair + equipment) booking, `IntegrityError` -> `409` rollback, idempotency keys, SQLite `BEFORE INSERT` overlap trigger, 2-connection barrier concurrency test harness, `scripts/verify_postgres_live.py`, and CI `postgres-concurrency-tests` job. Local live PostgreSQL server execution remains unverified on hosts without Docker/PostgreSQL.
 - T003 quarantined synthetic `FormRegistry` with immutable `(official_code, schema_version)`, tri-state (`present`/`explicit_negative`/`unknown`/`missing`) validation (`INV-022`), and fail-closed `409` blocks on self-approval and official EMR export (`docs/clinical/NEEDS_CLINICAL_REVIEW.md`).
-- Negative automated tests (40 passed, 1 skipped live-Postgres check), legal and domain reference docs, 222-ID feature catalog (33 partial demo flags).
+- T004 synthetic `SignatureProvider` + `FakeSyntheticSignatureProvider` test double, canonical `ClinicalDocumentSnapshot` envelope (`canonical_sha256` + `manifest_sha256`), linked addenda, and `entered_in_error` preserving original bytes bit-for-bit (`ADR-008`); legal `authenticated` signing remains blocked (`409`).
+- T005 multi-dependency treatment DAG with DFS cycle detection, cross-context coordination links (`appointment`, `lab_case` with `requires_verified_lab`, `charge`), transactional `outbox_event`, atomic appointment reschedule (`SCH-005`), bounded append-only payment refunds (`FIN-006`), clinician reassessment loops (`PLAN-04`), and status-separated treatment timeline (`ADR-008`).
+- Negative automated tests (43 passed, 1 skipped live-Postgres check), legal and domain reference docs, 222-ID feature catalog (47 partial demo flags).
 
 ## Designed only — not implemented
 - Real login, role authorizations, multi-clinic user identities, production clinic database routing.

@@ -29,6 +29,23 @@ class AppointmentCreate(BaseModel):
         return self
 
 
+class AppointmentReschedule(BaseModel):
+    practitioner_id: str | None = None
+    chair_id: str | None = None
+    start_at: datetime
+    end_at: datetime
+    reason_demo: str = Field(default="Rescheduled demo appointment", min_length=2, max_length=260)
+    equipment_ids: list[str] = Field(default_factory=list, max_length=10)
+
+    @model_validator(mode="after")
+    def check_utc(self):
+        if not self.start_at.tzinfo or not self.end_at.tzinfo:
+            raise ValueError("Provide timezone-aware RFC3339 timestamps")
+        if self.end_at <= self.start_at:
+            raise ValueError("Appointment end must follow start")
+        return self
+
+
 class EncounterCreate(BaseModel):
     patient_id: str
     practitioner_id: str
@@ -52,7 +69,38 @@ class PlanCreate(BaseModel):
 class TaskCreate(BaseModel):
     title: str = Field(min_length=2, max_length=160)
     phase: str = Field(default="Demo phase", max_length=100)
+    owner_role: Literal[
+        "dentist", "medical_director", "assistant", "receptionist", "treatment_coordinator"
+    ] = "dentist"
+    due_at: datetime | None = None
     depends_on_task_id: str | None = None
+    depends_on_task_ids: list[str] = Field(default_factory=list, max_length=20)
+
+    @model_validator(mode="after")
+    def check_due_tz(self):
+        if self.due_at is not None and not self.due_at.tzinfo:
+            raise ValueError("due_at must be a timezone-aware RFC3339 timestamp")
+        return self
+
+
+class TaskDependenciesUpdate(BaseModel):
+    depends_on_task_ids: list[str] = Field(min_length=1, max_length=20)
+
+
+class TaskCoordinationLinkCreate(BaseModel):
+    target_type: Literal["appointment", "lab_case", "charge"]
+    target_id: str = Field(min_length=2, max_length=36)
+    requires_verified_lab: bool = False
+
+
+class PlanReassessmentCreate(BaseModel):
+    source_task_id: str = Field(min_length=2, max_length=36)
+    reason: str = Field(min_length=5, max_length=400)
+    followup_task_title: str = Field(min_length=2, max_length=160)
+    followup_phase: str = Field(default="Reassessment phase", min_length=2, max_length=100)
+    owner_role: Literal[
+        "dentist", "medical_director", "assistant", "treatment_coordinator"
+    ] = "dentist"
 
 
 class LabCaseCreate(BaseModel):
@@ -80,6 +128,11 @@ class AllocationCreate(BaseModel):
     charge_id: str
     payment_id: str
     amount_vnd: int = Field(gt=0, le=10_000_000_000)
+
+
+class RefundCreate(BaseModel):
+    amount_vnd: int = Field(gt=0, le=10_000_000_000)
+    reason: str = Field(min_length=3, max_length=260)
 
 
 class DentalFindingCreate(BaseModel):
@@ -161,3 +214,24 @@ class FormValidatePreviewRequest(BaseModel):
 class FormOfficialExportRequest(BaseModel):
     template_id: str
     encounter_id: str
+
+
+class DocumentSnapshotCreate(BaseModel):
+    note_id: str
+    expected_revision: int = Field(ge=1)
+    template_id: str | None = None
+
+
+class DocumentSyntheticSignRequest(BaseModel):
+    expected_sha256: str = Field(min_length=64, max_length=64)
+    mode: Literal["synthetic_test_double", "legal_authenticated"] = "synthetic_test_double"
+    simulate_failure: Literal["timeout", "signature_mismatch"] | None = None
+
+
+class DocumentAddendumCreate(BaseModel):
+    content: str = Field(min_length=5, max_length=10000)
+    amendment_reason: str = Field(min_length=3, max_length=300)
+
+
+class DocumentEnterInErrorRequest(BaseModel):
+    reason: str = Field(min_length=3, max_length=300)
