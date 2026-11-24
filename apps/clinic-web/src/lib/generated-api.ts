@@ -69,6 +69,11 @@ export interface BackupCreateRequest {
   object_store_lag_seconds?: number;
 }
 
+export interface BranchScopeGrantCreate {
+  owner_group_key: string;
+  branch_id?: string;
+}
+
 export interface BreakGlassCreateRequest {
   patient_id: string;
   emergency_reason: string;
@@ -205,6 +210,20 @@ export interface EstimateFromCatalogCreate {
   lines: EstimateCatalogLineInput[];
 }
 
+export interface ExternalReferralCreate {
+  encounter_id?: string | null;
+  origin_facility_name: string;
+  referring_clinician_name: string;
+  referral_date: string;
+  document_summary_vi: string;
+  content_sha256: string;
+  archive_object_id?: string | null;
+}
+
+export interface ExternalReferralReviewRequest {
+  review_note: string;
+}
+
 export interface FhirBundleValidateRequest {
   bundle: Record<string, unknown>;
 }
@@ -255,6 +274,12 @@ export interface InstallmentScheduleCreate {
 export interface InstallmentTrancheInput {
   due_date: string;
   amount_vnd: number;
+}
+
+export interface InternalHandoffCreate {
+  patient_id?: string | null;
+  task_id?: string | null;
+  message_vi: string;
 }
 
 export interface LabCaseCreate {
@@ -319,6 +344,29 @@ export interface NoteUpdate {
   expected_revision: number;
 }
 
+export interface OdontogramLegendCreate {
+  code: string;
+  label_vi: string;
+  symbol_code: string;
+  category: "restoration" | "prosthesis" | "endodontic" | "missing" | "implant";
+}
+
+export interface OdontogramRestorationUpsert {
+  expected_revision: number;
+  legend_code: string;
+  surface: string;
+  material_note: string;
+  source_kind: "existing_external_reported" | "performed_in_clinic_demo";
+  documented_date: string;
+  evidence_note: string;
+  encounter_id?: string | null;
+}
+
+export interface OpsAssistantQueryRequest {
+  tool_name: "chair_utilization_summary" | "low_stock_alerts" | "overdue_staff_tasks" | "waitlist_count";
+  prompt_note?: string;
+}
+
 export interface PaperBatchCreate {
   source_cabinet: string;
   expected_item_count?: number;
@@ -342,6 +390,12 @@ export interface PaperItemVerifyLinkRequest {
   target_patient_id?: string | null;
   reviewer_note: string;
   claim_digitally_signed?: boolean;
+}
+
+export interface PatientContactLogCreate {
+  channel: "phone" | "sms_stub" | "zalo_stub" | "in_person" | "portal";
+  visibility: "internal_staff_only" | "patient_visible";
+  summary_text: string;
 }
 
 export interface PatientCreate {
@@ -512,6 +566,13 @@ export interface ScannedPageSchema {
   ocr_unverified_text?: string | null;
 }
 
+export interface ServiceComplaintCreate {
+  patient_id: string;
+  severity: "low" | "moderate" | "high" | "critical";
+  public_intake_summary: string;
+  private_investigation_notes: string;
+}
+
 export interface SignedUrlCreateRequest {
   subject_type: "clinical_note" | "encounter" | "lab_case";
   subject_id: string;
@@ -530,6 +591,14 @@ export interface StaffCreateRequest {
   display_name: string;
   role: "clinic_owner" | "medical_director" | "dentist" | "assistant" | "receptionist" | "treatment_coordinator" | "finance";
   branch_id?: string;
+}
+
+export interface StaffOperationalTaskCreate {
+  assignee_staff_id: string;
+  patient_id?: string | null;
+  title: string;
+  due_at: string;
+  escalation_owner_role?: "clinic_owner" | "medical_director" | "dentist" | "treatment_coordinator";
 }
 
 export interface StaffShiftCreate {
@@ -593,6 +662,13 @@ export interface TaskDependenciesUpdate {
   depends_on_task_ids: string[];
 }
 
+export interface TemporaryDelegationCreate {
+  delegate_staff_id: string;
+  permission: "finance.catalog_manage" | "operations.shift_manage" | "operations.downtime_manage" | "inventory.adjust_request" | "portal.manage";
+  ttl_seconds?: number;
+  reason: string;
+}
+
 export interface TokenIssueRequest {
   clinic_id: string;
   role: "clinic_owner" | "medical_director" | "dentist" | "assistant" | "receptionist" | "treatment_coordinator" | "finance";
@@ -624,6 +700,7 @@ export const OPENAPI_OPERATIONS = [
   "GET /api/v1/ai/evaluations",
   "POST /api/v1/ai/evaluations/run",
   "GET /api/v1/ai/models",
+  "POST /api/v1/ai/ops-assistant/query",
   "GET /api/v1/appointments",
   "POST /api/v1/appointments",
   "GET /api/v1/appointments/page",
@@ -651,6 +728,9 @@ export const OPENAPI_OPERATIONS = [
   "GET /api/v1/auth/break-glass/{grant_id}/patient-chart",
   "POST /api/v1/auth/break-glass/{grant_id}/review",
   "POST /api/v1/auth/break-glass/{grant_id}/revoke",
+  "GET /api/v1/auth/delegations",
+  "POST /api/v1/auth/delegations",
+  "POST /api/v1/auth/delegations/{grant_id}/revoke",
   "POST /api/v1/auth/revoke",
   "POST /api/v1/auth/signed-urls",
   "POST /api/v1/auth/token",
@@ -660,6 +740,7 @@ export const OPENAPI_OPERATIONS = [
   "POST /api/v1/clinical-documents/{snapshot_id}/addenda",
   "POST /api/v1/clinical-documents/{snapshot_id}/enter-in-error",
   "POST /api/v1/clinical-documents/{snapshot_id}/sign-synthetic",
+  "GET /api/v1/clinical-documents/{snapshot_id}/structured-export",
   "GET /api/v1/clinical-documents/{snapshot_id}/verify",
   "POST /api/v1/clinical-forms/official-export",
   "GET /api/v1/clinical-forms/templates",
@@ -668,6 +749,8 @@ export const OPENAPI_OPERATIONS = [
   "POST /api/v1/clinical-forms/validate-preview",
   "POST /api/v1/consents",
   "POST /api/v1/consents/{consent_id}/withdraw",
+  "GET /api/v1/crm/complaints",
+  "POST /api/v1/crm/complaints",
   "GET /api/v1/dashboard",
   "GET /api/v1/demo/context",
   "GET /api/v1/encounters",
@@ -737,12 +820,16 @@ export const OPENAPI_OPERATIONS = [
   "POST /api/v1/migrations/paper-items/{item_id}/verify-link",
   "PUT /api/v1/notes/{note_id}",
   "POST /api/v1/notes/{note_id}/demo-lock",
+  "GET /api/v1/odontogram/legend",
+  "POST /api/v1/odontogram/legend",
   "GET /api/v1/operations/checkins",
   "POST /api/v1/operations/checkins",
   "POST /api/v1/operations/checkins/{checkin_id}/status",
   "GET /api/v1/operations/downtimes",
   "POST /api/v1/operations/downtimes",
   "POST /api/v1/operations/downtimes/{downtime_id}/resolve",
+  "GET /api/v1/operations/handoffs",
+  "POST /api/v1/operations/handoffs",
   "GET /api/v1/operations/incidents",
   "POST /api/v1/operations/incidents",
   "GET /api/v1/operations/recalls",
@@ -750,6 +837,9 @@ export const OPENAPI_OPERATIONS = [
   "POST /api/v1/operations/recalls/{recall_id}/close",
   "GET /api/v1/operations/shifts",
   "POST /api/v1/operations/shifts",
+  "GET /api/v1/operations/staff-tasks",
+  "POST /api/v1/operations/staff-tasks",
+  "POST /api/v1/operations/staff-tasks/escalate-overdue",
   "GET /api/v1/operations/turnovers",
   "POST /api/v1/operations/turnovers",
   "POST /api/v1/operations/turnovers/{checklist_id}/complete",
@@ -757,6 +847,8 @@ export const OPENAPI_OPERATIONS = [
   "POST /api/v1/operations/waitlist",
   "POST /api/v1/operations/waitlist/{entry_id}/confirm-booking",
   "POST /api/v1/operations/waitlist/{entry_id}/prepare-outreach",
+  "POST /api/v1/org/branch-scope-grants",
+  "GET /api/v1/org/multi-branch-aggregates",
   "POST /api/v1/patient-portal/appointments/{appointment_id}/confirm",
   "POST /api/v1/patient-portal/appointments/{appointment_id}/reschedule-requests",
   "POST /api/v1/patient-portal/intake-forms",
@@ -770,9 +862,16 @@ export const OPENAPI_OPERATIONS = [
   "GET /api/v1/patients/page",
   "GET /api/v1/patients/{patient_id}",
   "GET /api/v1/patients/{patient_id}/consents",
+  "GET /api/v1/patients/{patient_id}/contact-timeline",
+  "POST /api/v1/patients/{patient_id}/contact-timeline",
+  "GET /api/v1/patients/{patient_id}/document-eligibility",
   "GET /api/v1/patients/{patient_id}/medical-risk-reviews",
   "POST /api/v1/patients/{patient_id}/medical-risk-reviews",
   "GET /api/v1/patients/{patient_id}/odontogram",
+  "GET /api/v1/patients/{patient_id}/odontogram/export",
+  "PUT /api/v1/patients/{patient_id}/odontogram/restorations/{tooth_code}",
+  "GET /api/v1/patients/{patient_id}/referrals",
+  "POST /api/v1/patients/{patient_id}/referrals",
   "GET /api/v1/patients/{patient_id}/revenue-account",
   "GET /api/v1/patients/{patient_id}/unified-summary",
   "POST /api/v1/portal/grants",
@@ -780,6 +879,7 @@ export const OPENAPI_OPERATIONS = [
   "POST /api/v1/portal/plan-summaries",
   "GET /api/v1/portal/reschedule-requests",
   "POST /api/v1/portal/reschedule-requests/{request_id}/approve",
+  "POST /api/v1/referrals/{referral_id}/review",
   "GET /api/v1/reports/dictionary",
   "GET /api/v1/reports/kpi-lineage",
   "POST /api/v1/resources",
@@ -1187,5 +1287,14 @@ export class DenlyraApiClient {
   }
   createQualityIncident(payload: QualityIncidentCreate) {
     return this.request<{ id: string; status: string; severity: string }>("POST", "operations/incidents", payload);
+  }
+  exportOdontogram(patientId: string) {
+    return this.request<{ patient_id: string; export_sha256: string; certified_clinical_print: boolean; restorations: Array<{ tooth_code: string; current_revision_no: number }> }>("GET", `patients/${encodeURIComponent(patientId)}/odontogram/export`);
+  }
+  getDocumentEligibility(patientId: string) {
+    return this.request<{ patient_id: string; eligible_for_elective_procedure: boolean; flags: string[]; signed_documents_mutated: boolean }>("GET", `patients/${encodeURIComponent(patientId)}/document-eligibility`);
+  }
+  queryOpsAssistant(payload: OpsAssistantQueryRequest) {
+    return this.request<{ tool_name: string; proposed_human_action: string; executed_any_write: boolean; requires_human_confirmation: boolean; read_only_result: Record<string, number> }>("POST", "ai/ops-assistant/query", payload);
   }
 }

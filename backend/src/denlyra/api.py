@@ -29,7 +29,9 @@ from . import (
     governance_analytics,
     inventory,
     models as m,
+    odontogram_referrals_export,
     operations,
+    org_crm_ops_assistant,
     patient_portal,
     services as svc,
 )
@@ -46,6 +48,7 @@ from .schemas import (
     ArchiveLegalHoldRequest,
     ArchiveObjectCreate,
     BackupCreateRequest,
+    BranchScopeGrantCreate,
     BreakGlassCreateRequest,
     BreakGlassReviewRequest,
     CashierReconciliationCreate,
@@ -68,11 +71,14 @@ from .schemas import (
     EstimateAcceptRequest,
     EstimateCreate,
     EstimateFromCatalogCreate,
+    ExternalReferralCreate,
+    ExternalReferralReviewRequest,
     FhirBundleValidateRequest,
     FormOfficialExportRequest,
     FormTemplateCreate,
     FormValidatePreviewRequest,
     InstallmentScheduleCreate,
+    InternalHandoffCreate,
     LabCaseCreate,
     LabPartnerGrantCreate,
     LabPartnerMilestoneUpdate,
@@ -84,10 +90,14 @@ from .schemas import (
     MilestoneEvaluateRequest,
     NoteCreate,
     NoteUpdate,
+    OdontogramLegendCreate,
+    OdontogramRestorationUpsert,
+    OpsAssistantQueryRequest,
     PaperBatchCreate,
     PaperBatchRollbackRequest,
     PaperItemCreate,
     PaperItemVerifyLinkRequest,
+    PatientContactLogCreate,
     PatientCreate,
     PatientMergeConfirmRequest,
     PatientMergeCreate,
@@ -113,9 +123,11 @@ from .schemas import (
     ResourceCreateRequest,
     ResourceDowntimeCreate,
     RestoreDrillRequest,
+    ServiceComplaintCreate,
     SignedUrlCreateRequest,
     SkuCreate,
     StaffCreateRequest,
+    StaffOperationalTaskCreate,
     StaffShiftCreate,
     StockAdjustmentApproveRequest,
     StockAdjustmentCreate,
@@ -126,6 +138,7 @@ from .schemas import (
     TaskCoordinationLinkCreate,
     TaskCreate,
     TaskDependenciesUpdate,
+    TemporaryDelegationCreate,
     TokenIssueRequest,
     WaitlistCreate,
 )
@@ -2098,6 +2111,275 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             continuity_governance.create_quality_incident_report(
                 db, clinic_id, principal.staff_id, actor, payload
             )
+        )
+
+    @app.get("/api/v1/odontogram/legend")
+    def list_odontogram_legend(context=Depends(require_perm("odontogram.read"))):
+        db, clinic_id, _ = context
+        rows = db.scalars(
+            select(m.OdontogramLegendEntry)
+            .where(m.OdontogramLegendEntry.clinic_id == clinic_id)
+            .order_by(
+                m.OdontogramLegendEntry.code.asc(),
+                m.OdontogramLegendEntry.version_number.desc(),
+            )
+        ).all()
+        return [doc(r) for r in rows]
+
+    @app.post("/api/v1/odontogram/legend", status_code=201)
+    def publish_odontogram_legend_endpoint(
+        payload: OdontogramLegendCreate,
+        ctx_tuple=Depends(require_principal_perm("odontogram.write")),
+    ):
+        db, clinic_id, actor, principal = ctx_tuple
+        return doc(
+            odontogram_referrals_export.publish_odontogram_legend_version(
+                db, clinic_id, principal.staff_id, actor, payload
+            )
+        )
+
+    @app.put("/api/v1/patients/{patient_id}/odontogram/restorations/{tooth_code}")
+    def upsert_tooth_restoration_endpoint(
+        patient_id: str,
+        tooth_code: str,
+        payload: OdontogramRestorationUpsert,
+        ctx_tuple=Depends(require_principal_perm("odontogram.write")),
+    ):
+        db, clinic_id, actor, principal = ctx_tuple
+        return doc(
+            odontogram_referrals_export.upsert_tooth_restoration_optimistic(
+                db, clinic_id, patient_id, tooth_code, principal.staff_id, actor, payload
+            )
+        )
+
+    @app.get("/api/v1/patients/{patient_id}/odontogram/export")
+    def export_odontogram_endpoint(
+        patient_id: str, context=Depends(require_perm("odontogram.read", audit_read=True))
+    ):
+        db, clinic_id, actor = context
+        return odontogram_referrals_export.export_patient_odontogram(
+            db, clinic_id, patient_id, actor
+        )
+
+    @app.get("/api/v1/patients/{patient_id}/referrals")
+    def list_external_referrals(
+        patient_id: str, context=Depends(require_perm("encounter.read", audit_read=True))
+    ):
+        db, clinic_id, _ = context
+        svc.ensure(db, m.Patient, patient_id, clinic_id)
+        rows = db.scalars(
+            select(m.ExternalReferralDocument)
+            .where(
+                m.ExternalReferralDocument.clinic_id == clinic_id,
+                m.ExternalReferralDocument.patient_id == patient_id,
+            )
+            .order_by(m.ExternalReferralDocument.created_at.desc())
+        ).all()
+        return [doc(r) for r in rows]
+
+    @app.post("/api/v1/patients/{patient_id}/referrals", status_code=201)
+    def create_external_referral_endpoint(
+        patient_id: str,
+        payload: ExternalReferralCreate,
+        context=Depends(require_perm("referral.intake")),
+    ):
+        db, clinic_id, actor = context
+        return doc(
+            odontogram_referrals_export.create_external_referral(
+                db, clinic_id, patient_id, actor, payload
+            )
+        )
+
+    @app.post("/api/v1/referrals/{referral_id}/review")
+    def review_external_referral_endpoint(
+        referral_id: str,
+        payload: ExternalReferralReviewRequest,
+        ctx_tuple=Depends(require_principal_perm("referral.review")),
+    ):
+        db, clinic_id, actor, principal = ctx_tuple
+        return doc(
+            odontogram_referrals_export.review_external_referral(
+                db, clinic_id, referral_id, principal.staff_id, actor, payload
+            )
+        )
+
+    @app.get("/api/v1/patients/{patient_id}/document-eligibility")
+    def get_document_eligibility_endpoint(
+        patient_id: str, context=Depends(require_perm("patient.read"))
+    ):
+        db, clinic_id, _ = context
+        return odontogram_referrals_export.evaluate_patient_document_eligibility(
+            db, clinic_id, patient_id
+        )
+
+    @app.get("/api/v1/clinical-documents/{snapshot_id}/structured-export")
+    def get_structured_clinical_export_endpoint(
+        snapshot_id: str,
+        context=Depends(require_perm("clinical_doc.read", audit_read=True)),
+    ):
+        db, clinic_id, actor = context
+        return odontogram_referrals_export.export_structured_clinical_document(
+            db, clinic_id, snapshot_id, actor
+        )
+
+    @app.post("/api/v1/org/branch-scope-grants", status_code=201)
+    def post_branch_scope_grant(
+        payload: BranchScopeGrantCreate,
+        ctx_tuple=Depends(require_principal_perm("staff.manage")),
+    ):
+        db, clinic_id, actor, principal = ctx_tuple
+        return doc(
+            org_crm_ops_assistant.grant_owner_branch_scope(
+                db, clinic_id, principal.staff_id, actor, payload
+            )
+        )
+
+    @app.get("/api/v1/org/multi-branch-aggregates")
+    def get_multi_branch_aggregates_endpoint(
+        owner_group_key: str,
+        context=Depends(require_perm("staff.manage")),
+    ):
+        db, clinic_id, actor = context
+        return org_crm_ops_assistant.get_multi_branch_aggregates(
+            db, clinic_id, actor, owner_group_key
+        )
+
+    @app.get("/api/v1/auth/delegations")
+    def list_delegations(context=Depends(require_perm("staff.manage"))):
+        db, clinic_id, _ = context
+        rows = db.scalars(
+            select(m.TemporaryDelegationGrant)
+            .where(m.TemporaryDelegationGrant.clinic_id == clinic_id)
+            .order_by(m.TemporaryDelegationGrant.created_at.desc())
+        ).all()
+        return [doc(r) for r in rows]
+
+    @app.post("/api/v1/auth/delegations", status_code=201)
+    def create_delegation_endpoint(
+        payload: TemporaryDelegationCreate,
+        ctx_tuple=Depends(require_principal_perm("staff.manage")),
+    ):
+        db, clinic_id, actor, principal = ctx_tuple
+        return doc(
+            org_crm_ops_assistant.create_temporary_delegation(
+                db, clinic_id, principal.staff_id, actor, payload
+            )
+        )
+
+    @app.post("/api/v1/auth/delegations/{grant_id}/revoke")
+    def revoke_delegation_endpoint(
+        grant_id: str, context=Depends(require_perm("staff.manage"))
+    ):
+        db, clinic_id, actor = context
+        return doc(
+            org_crm_ops_assistant.revoke_temporary_delegation(db, clinic_id, grant_id, actor)
+        )
+
+    @app.get("/api/v1/operations/staff-tasks")
+    def list_staff_operational_tasks(context=Depends(require_perm("operations.read"))):
+        db, clinic_id, _ = context
+        rows = db.scalars(
+            select(m.StaffOperationalTask)
+            .where(m.StaffOperationalTask.clinic_id == clinic_id)
+            .order_by(m.StaffOperationalTask.due_at.asc())
+        ).all()
+        return [doc(r) for r in rows]
+
+    @app.post("/api/v1/operations/staff-tasks", status_code=201)
+    def create_staff_operational_task_endpoint(
+        payload: StaffOperationalTaskCreate,
+        context=Depends(require_perm("operations.checkin")),
+    ):
+        db, clinic_id, actor = context
+        return doc(
+            org_crm_ops_assistant.create_staff_operational_task(db, clinic_id, actor, payload)
+        )
+
+    @app.post("/api/v1/operations/staff-tasks/escalate-overdue")
+    def escalate_overdue_staff_tasks_endpoint(
+        context=Depends(require_perm("operations.checkin")),
+    ):
+        db, clinic_id, actor = context
+        return org_crm_ops_assistant.escalate_overdue_staff_tasks(db, clinic_id, actor)
+
+    @app.get("/api/v1/operations/handoffs")
+    def list_handoffs_endpoint(
+        context=Depends(require_perm("handoff.read", audit_read=True)),
+    ):
+        db, clinic_id, _ = context
+        rows = db.scalars(
+            select(m.InternalHandoffNote)
+            .where(m.InternalHandoffNote.clinic_id == clinic_id)
+            .order_by(m.InternalHandoffNote.created_at.desc())
+        ).all()
+        return [doc(r) for r in rows]
+
+    @app.post("/api/v1/operations/handoffs", status_code=201)
+    def create_handoff_endpoint(
+        payload: InternalHandoffCreate,
+        ctx_tuple=Depends(require_principal_perm("handoff.write")),
+    ):
+        db, clinic_id, actor, principal = ctx_tuple
+        return doc(
+            org_crm_ops_assistant.create_internal_handoff_note(
+                db, clinic_id, principal.staff_id, actor, payload
+            )
+        )
+
+    @app.get("/api/v1/patients/{patient_id}/contact-timeline")
+    def list_patient_contact_timeline(
+        patient_id: str, context=Depends(require_perm("operations.read"))
+    ):
+        db, clinic_id, _ = context
+        svc.ensure(db, m.Patient, patient_id, clinic_id)
+        rows = db.scalars(
+            select(m.PatientContactLog)
+            .where(
+                m.PatientContactLog.clinic_id == clinic_id,
+                m.PatientContactLog.patient_id == patient_id,
+            )
+            .order_by(m.PatientContactLog.created_at.desc())
+        ).all()
+        return [doc(r) for r in rows]
+
+    @app.post("/api/v1/patients/{patient_id}/contact-timeline", status_code=201)
+    def post_patient_contact_timeline(
+        patient_id: str,
+        payload: PatientContactLogCreate,
+        context=Depends(require_perm("operations.recall")),
+    ):
+        db, clinic_id, actor = context
+        return doc(
+            org_crm_ops_assistant.create_patient_contact_log(
+                db, clinic_id, patient_id, actor, payload
+            )
+        )
+
+    @app.get("/api/v1/crm/complaints")
+    def list_complaints_endpoint(
+        ctx_tuple=Depends(require_principal_perm("complaint.read")),
+    ):
+        db, _, _, principal = ctx_tuple
+        return org_crm_ops_assistant.list_service_complaints_scoped(db, principal)
+
+    @app.post("/api/v1/crm/complaints", status_code=201)
+    def create_complaint_endpoint(
+        payload: ServiceComplaintCreate,
+        context=Depends(require_perm("complaint.create")),
+    ):
+        db, clinic_id, actor = context
+        return doc(
+            org_crm_ops_assistant.create_service_complaint(db, clinic_id, actor, payload)
+        )
+
+    @app.post("/api/v1/ai/ops-assistant/query")
+    def query_ops_assistant_endpoint(
+        payload: OpsAssistantQueryRequest,
+        ctx_tuple=Depends(require_principal_perm("context.read")),
+    ):
+        db, _, _, principal = ctx_tuple
+        return org_crm_ops_assistant.query_policy_aware_ops_assistant(
+            db, principal, cfg.ai_assist_enabled, payload
         )
 
     @app.get("/api/v1/audit-events/page")

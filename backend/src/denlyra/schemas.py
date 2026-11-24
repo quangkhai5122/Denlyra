@@ -735,3 +735,109 @@ class QualityIncidentCreate(BaseModel):
     evidence_note: str = Field(min_length=3, max_length=300)
     encounter_id: str | None = None
     source_kind: Literal["staff_reported"] = "staff_reported"
+
+
+DELEGATABLE_PERMISSIONS = Literal[
+    "finance.catalog_manage",
+    "operations.shift_manage",
+    "operations.downtime_manage",
+    "inventory.adjust_request",
+    "portal.manage",
+]
+
+
+class OdontogramLegendCreate(BaseModel):
+    code: str = Field(min_length=2, max_length=40)
+    label_vi: str = Field(min_length=3, max_length=180)
+    symbol_code: str = Field(min_length=1, max_length=16)
+    category: Literal["restoration", "prosthesis", "endodontic", "missing", "implant"]
+
+
+class OdontogramRestorationUpsert(BaseModel):
+    expected_revision: StrictInt = Field(ge=0)
+    legend_code: str = Field(min_length=2, max_length=40)
+    surface: str = Field(min_length=1, max_length=8)
+    material_note: str = Field(min_length=3, max_length=260)
+    source_kind: Literal["existing_external_reported", "performed_in_clinic_demo"]
+    documented_date: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
+    evidence_note: str = Field(min_length=3, max_length=260)
+    encounter_id: str | None = None
+
+
+class ExternalReferralCreate(BaseModel):
+    encounter_id: str | None = None
+    origin_facility_name: str = Field(min_length=3, max_length=200)
+    referring_clinician_name: str = Field(min_length=3, max_length=160)
+    referral_date: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
+    document_summary_vi: str = Field(min_length=5, max_length=300)
+    content_sha256: str = Field(min_length=64, max_length=64)
+    archive_object_id: str | None = None
+
+
+class ExternalReferralReviewRequest(BaseModel):
+    review_note: str = Field(min_length=3, max_length=300)
+
+
+class BranchScopeGrantCreate(BaseModel):
+    owner_group_key: str = Field(min_length=3, max_length=80)
+    branch_id: str = Field(default="branch-main", min_length=2, max_length=36)
+
+
+class TemporaryDelegationCreate(BaseModel):
+    delegate_staff_id: str
+    permission: DELEGATABLE_PERMISSIONS
+    ttl_seconds: StrictInt = Field(default=600, ge=1, le=86400)
+    reason: str = Field(min_length=5, max_length=300)
+
+
+class StaffOperationalTaskCreate(BaseModel):
+    assignee_staff_id: str
+    patient_id: str | None = None
+    title: str = Field(min_length=3, max_length=200)
+    due_at: datetime
+    escalation_owner_role: Literal[
+        "clinic_owner", "medical_director", "dentist", "treatment_coordinator"
+    ] = "clinic_owner"
+
+    @model_validator(mode="after")
+    def check_due_tz(self):
+        if not self.due_at.tzinfo:
+            raise ValueError("Provide timezone-aware RFC3339 due_at timestamp")
+        return self
+
+
+class InternalHandoffCreate(BaseModel):
+    patient_id: str | None = None
+    task_id: str | None = None
+    message_vi: str = Field(min_length=3, max_length=400)
+
+    @model_validator(mode="after")
+    def check_tethered(self):
+        if not self.patient_id and not self.task_id:
+            raise ValueError(
+                "Internal handoff note must be tied to patient_id or task_id (HR-006)"
+            )
+        return self
+
+
+class PatientContactLogCreate(BaseModel):
+    channel: Literal["phone", "sms_stub", "zalo_stub", "in_person", "portal"]
+    visibility: Literal["internal_staff_only", "patient_visible"]
+    summary_text: str = Field(min_length=3, max_length=300)
+
+
+class ServiceComplaintCreate(BaseModel):
+    patient_id: str
+    severity: Literal["low", "moderate", "high", "critical"]
+    public_intake_summary: str = Field(min_length=5, max_length=300)
+    private_investigation_notes: str = Field(min_length=3, max_length=600)
+
+
+class OpsAssistantQueryRequest(BaseModel):
+    tool_name: Literal[
+        "chair_utilization_summary",
+        "low_stock_alerts",
+        "overdue_staff_tasks",
+        "waitlist_count",
+    ]
+    prompt_note: str = Field(default="", max_length=400)

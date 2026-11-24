@@ -1,13 +1,14 @@
-# Denlyra durable agent handoff — 2026-11-24
+# Denlyra durable agent handoff — 2026-11-25
 
 ## Current status
 Research-grade **synthetic-only demonstrator**, version `0.1.0`.
-- Eighteen foundational engineering packets (`T000`–`T018`) now have verified synthetic domain, API, migration, frontend, and negative-test implementations (`ADR-006`..`ADR-014`).
-- `T002` frozen Alembic migration chain (`0001_demo` -> `0009_encounter_lifecycle_and_clinical_governance`), atomic multi-resource booking, SQLite triggers, 2-connection race harness, `scripts/verify_postgres_live.py`, and GitHub Actions `postgres-concurrency-tests` (`postgres:16`) are implemented; inspect the remote GitHub Actions run or run `verify_postgres_live.py` against a local PostgreSQL 16 server to record the live PG receipt.
+- Twenty foundational engineering packets (`T000`–`T020`) now have verified synthetic domain, API, migration, frontend, and negative-test implementations (`ADR-006`..`ADR-015`).
+- `T002` frozen Alembic migration chain (`0001_demo` -> `0010_odontogram_referrals_delegation_and_ops`), atomic multi-resource booking, SQLite triggers, 2-connection race harness, `scripts/verify_postgres_live.py`, and GitHub Actions `postgres-concurrency-tests` (`postgres:16`) are implemented; inspect the remote GitHub Actions run or run `verify_postgres_live.py` against a local PostgreSQL 16 server to record the live PG receipt.
 - `T003` quarantined synthetic `FormRegistry` (`INV-022`), `T004` real legal e-signing, and `T010` statutory retention schedules remain gated on human clinical/legal sign-off in [NEEDS_CLINICAL_REVIEW.md](clinical/NEEDS_CLINICAL_REVIEW.md) and [RETENTION_AND_DR_POLICY.md](operations/RETENTION_AND_DR_POLICY.md).
 - **Not production, not approved EMR, not legally signed clinical records.**
 
 Single source of current status: this file. Detailed dated evidence:
+- [2026-11-25 T019/T020 odontogram revisions, referrals, delegation & ops assistant](sessions/2026-11-25_T019_T020_ODONTOGRAM_DELEGATION_OPS_ASSISTANT.md)
 - [2026-11-24 T017/T018 encounter lifecycle, allergy, procedure evidence & governance](sessions/2026-11-24_T017_T018_ENCOUNTER_LIFECYCLE_AND_GOVERNANCE.md)
 - [2026-11-24 T015/T016 patient merge, break-glass, portal & KPI lineage](sessions/2026-11-24_T015_T016_MERGE_PORTAL_KPI_LINEAGE.md)
 - [2026-11-24 T013/T014 clinic operations, hash-chained audit & cursor pagination](sessions/2026-11-24_T013_T014_OPERATIONS_AUDIT_PAGINATION.md)
@@ -20,14 +21,15 @@ Single source of current status: this file. Detailed dated evidence:
 Mandatory opening/closing and Vietnamese report: [AGENT_WORKFLOW](engineering/AGENT_WORKFLOW.md).
 
 ## Implemented & demonstrated
-- FastAPI localhost API, **75 domain/platform tables** and **185 OpenAPI HTTP operations** (`153` paths), plus zero-dependency static UI (`apps/demo-web/`) and role-based Next.js 15.5.29 workspaces (`apps/clinic-web/`).
-- **T001–T005 (`ADR-007`, `ADR-008`):** Synthetic `HS256` token issuer + RBAC/ABAC + revocation + single-use signed URLs; frozen Alembic migrations (`0001_demo`..`0009_encounter_lifecycle_and_clinical_governance`), atomic doctor+chair+device booking & 2-connection race tests; quarantined `FormRegistry` (`INV-022`); `FakeSyntheticSignatureProvider` + immutable `ClinicalDocumentSnapshot` + addenda/`entered_in_error`; multi-dependency DAG with DFS cycle detection, `treatment_coordination_link`, `outbox_event`, atomic reschedule, reassessment loops, and timeline.
+- FastAPI localhost API, **86 domain/platform tables** and **209 OpenAPI HTTP operations** (`170` paths), plus zero-dependency static UI (`apps/demo-web/`) and role-based Next.js 15.5.29 workspaces (`apps/clinic-web/`).
+- **T001–T005 (`ADR-007`, `ADR-008`):** Synthetic `HS256` token issuer + RBAC/ABAC + revocation + single-use signed URLs; frozen Alembic migrations (`0001_demo`..`0010_odontogram_referrals_delegation_and_ops`), atomic doctor+chair+device booking & 2-connection race tests; quarantined `FormRegistry` (`INV-022`); `FakeSyntheticSignatureProvider` + immutable `ClinicalDocumentSnapshot` + addenda/`entered_in_error`; multi-dependency DAG with DFS cycle detection, `treatment_coordination_link`, `outbox_event`, atomic reschedule, reassessment loops, and timeline.
 - **T006–T008 (`ADR-009`):** Paper quarantine importer (`MigrationBatch`/`MigrationItem`, missing-page block, duplicate-patient queue, `legacy_scan` provenance, rollback); purpose-separated `ConsentRecord`, lab delay alerts, delivery vs verification separation, remake lineage, and minimized `LabPartnerGrant` portal; immutable `EstimateVersion`, append-only `LedgerEntry`, idempotent charges/payments/allocations/refunds, allocation-bounds trigger, and daily `CashierReconciliation`.
 - **T009–T010 (`ADR-010`):** Generated OpenAPI TypeScript client (`scripts/generate_openapi_ts.py`), 5 role workspaces (`receptionist`, `dentist`, `treatment_coordinator`, `finance`, `clinic_owner`) with in-memory Bearer tokens, pessimistic `409 Conflict` alerts, fixed `Asia/Ho_Chi_Minh` (`+07:00`) timezone formatting (`R-011`), accessible SVG FDI odontogram (`11–48` & `51–85`, `ODN-004`); per-clinic wrapped DEKs, `DLY1` Encrypt-then-MAC `ArchiveObject` storage, key rotation/revocation, `409` retention/legal-hold deletion block (`DR-08`), signed `BackupManifest`, and isolated DR restore drill (`RestoreDrillRun` + `scripts/run_dr_restore_drill.py`).
 - **T011–T012 (`ADR-011`):** Append-only inventory lot & stock movement ledger (`INV-001`..`INV-010`, `INV-023` `reservation != consumption`, FEFO picking, expired/quarantined blocks, DB immutability triggers, and dual-control adjustments `INV-010`); clinic-scoped HL7 FHIR R4 `HTEST` + `Provenance` export/validator (`INT-002`/`INT-003`) and zero-egress draft-only AI span/timeline engine, prompt-injection firewall (`AI-010`), feature kill-switch (`AI-014`), and 8-case offline benchmark harness (`scripts/run_ai_eval_harness.py`).
 - **T013–T014 (`ADR-012`):** Clinician shift windows (`SCH-001`), chair/device maintenance downtime blocks + DB trigger (`SCH-015`/`HR-004`), confirmation state separation (`SCH-009`/`CRM-003`), identity-verified check-in + chair sanitation turnover gate (`PAT-009`/`SCH-010`/`HR-002`/`HR-003`), and consent-safe recall/follow-up queue (`CRM-004`/`005`/`010`); per-clinic SHA-256 hash-chained `audit_event` journal + tamper verifier (`SEC-007`) and HMAC-signed clinic-scoped cursor pagination (`PAT-002`, `R-012`).
 - **T015–T016 (`ADR-013`):** Reversible dual-confirmed patient merge preserving `source_patient_id` (`PAT-006`), `<=15`-minute read-only emergency break-glass with mandatory independent review (`ORG-011`), and verified-guardian gated `patient_portal` read/reschedule/intake views excluding internal draft notes (`PORT-001`..`007`, `PORT-009`, `TRT-016`); append-only versioned clinic service price catalog + locked `EstimatePriceSnapshot` (`FIN-001`), dual-control discount override workflow without clinical plan edits (`FIN-014`), and attributable owner KPI dictionary & lineage (`RPT-002`, `RPT-004`..`007`, `RPT-011`).
 - **T017–T018 (`ADR-014`):** Append-only tri-state medical/allergy risk review (`EMR-003`, `PAT-003`, `INV-022`), encounter closure & missing-signature checklist gate (`EMR-009`, `EMR-018`), and clinician-authored dental diagnosis & FDI tooth performed procedure evidence (`EMR-010`, `EMR-011`, `ODN-005`); clinical milestone checklists (`TRT-012`), lossless treatment pause/cancel/terminate governance (`TRT-014`), consent-safe schedule waiting list (`SCH-008`), reviewed installment schedules without auto-charge (`FIN-008`), and protected quality incident escalation queue (`HR-008`).
+- **T019–T020 (`ADR-015`):** Clinician-reviewed versioned odontogram legend (`ODN-006`), optimistic tooth restoration revisions & hashed export (`ODN-007`, `ODN-008`, `ODN-010`), reviewed external referrals (`EMR-013`), non-destructive document eligibility flags (`PAT-010`), and structured clinical archive export (`EMR-014`); aggregate-only multi-branch owner view (`ORG-007`), auto-expiring temporary delegation (`ORG-009`), staff task escalations & patient-tied handoffs (`HR-005`, `HR-006`), differentiated contact timeline & leadership-redacted complaint notes (`CRM-001`, `CRM-009`), and allowlisted read-only ops assistant (`AI-005`).
 
 ## Task / milestone ledger
 | ID | Status | Evidence / starting condition |
@@ -51,39 +53,41 @@ Mandatory opening/closing and Vietnamese report: [AGENT_WORKFLOW](engineering/AG
 | [T016](tasks/T016_PRICE_CATALOG_AND_KPI_LINEAGE.md) | Completed (versioned price catalog, discount dual-control & attributable KPI lineage) | [ADR-013](adr/ADR-013-patient-merge-breakglass-portal-and-kpi-lineage.md), `governance_analytics.py`, `test_price_catalog_and_kpi_lineage.py` |
 | [T017](tasks/T017_ENCOUNTER_LIFECYCLE_ALLERGY_AND_PROCEDURES.md) | Completed (tri-state medical/allergy review, encounter closure gate & procedure tooth evidence) | [ADR-014](adr/ADR-014-encounter-lifecycle-procedure-evidence-and-clinical-governance.md), `clinical_lifecycle.py`, `test_encounter_lifecycle_and_procedures.py` |
 | [T018](tasks/T018_MILESTONES_WAITLIST_INSTALLMENTS_AND_INCIDENTS.md) | Completed (milestone checklists, plan pause/terminate, waitlist, installments & quality incidents) | [ADR-014](adr/ADR-014-encounter-lifecycle-procedure-evidence-and-clinical-governance.md), `continuity_governance.py`, `test_milestones_waitlist_installments_incidents.py` |
+| [T019](tasks/T019_ODONTOGRAM_REVISIONS_REFERRALS_AND_EXPORT.md) | Completed (optimistic odontogram restoration revisions & export, external referrals & structured export) | [ADR-015](adr/ADR-015-odontogram-revisions-referrals-delegation-and-ops-assistant.md), `odontogram_referrals_export.py`, `test_odontogram_revisions_referrals_export.py` |
+| [T020](tasks/T020_DELEGATION_HANDOFFS_COMPLAINTS_AND_OPS_ASSISTANT.md) | Completed (multi-branch aggregates, temporary delegation, handoffs, complaints & ops assistant) | [ADR-015](adr/ADR-015-odontogram-revisions-referrals-delegation-and-ops-assistant.md), `org_crm_ops_assistant.py`, `test_delegation_handoffs_complaints_ops_assistant.py` |
 
-Full backlog: [ROADMAP](engineering/ROADMAP.md), [task packets](tasks/), [222-ID catalog](product/FUNCTION_CATALOG.md): **150 partial demo flags (`D`), 72 not implemented (`—`)**; 0 rows are certified production functionality.
+Full backlog: [ROADMAP](engineering/ROADMAP.md), [task packets](tasks/), [222-ID catalog](product/FUNCTION_CATALOG.md): **164 partial demo flags (`D`), 58 not implemented (`—`)**; 0 rows are certified production functionality.
 
-## Validation evidence — last verified 2026-11-24
+## Validation evidence — last verified 2026-11-25
 Windows, repository `.venv`, CPython 3.12.14; Node 24.11.1 / npm 11.6.2.
 
 | Check | Observed result |
 |---|---|
-| `./.venv/Scripts/python.exe -m pytest backend/tests -q` | **74 passed, 1 skipped** (live PG skipped locally without `DENLYRA_TEST_POSTGRES_URL`) |
+| `./.venv/Scripts/python.exe -m pytest backend/tests -q` | **79 passed, 1 skipped** (live PG skipped locally without `DENLYRA_TEST_POSTGRES_URL`) |
 | `python scripts/verify_audit_chain.py` | Passed; verified per-clinic SHA-256 `prev_hash -> entry_hash` chain |
 | `python scripts/run_dr_restore_drill.py` | Passed; isolated restore verified 2 encrypted objects (`v1`+`v2`) + 1 sealed snapshot, `rpo_lag_ms=0` |
 | `python scripts/run_ai_eval_harness.py` | Passed; 8/8 cases (`extraction=100%`, `injection_blocked=100%`) |
-| `python scripts/generate_openapi_ts.py --check` | Passed; `generated-api.ts` matches 153 FastAPI paths / 185 operations |
+| `python scripts/generate_openapi_ts.py --check` | Passed; `generated-api.ts` matches 170 FastAPI paths / 209 operations |
 | Backend & scripts Ruff / `compileall` / `node --check` | Passed (exit 0) |
-| `python scripts/verify_artifact.py` | Passed; 222 unique catalog IDs (150 `D`), 20 mandatory files, disabled safety flags and Markdown links |
-| `python scripts/smoke_baseline.py` | Passed; SQLite upgrade `0001_demo` -> `0009_encounter_lifecycle_and_clinical_governance` (75 domain tables; 185 HTTP operations) |
-| Alembic `upgrade head --sql` (cwd `backend`) | Passed; offline PostgreSQL SQL generated through `0009_encounter_lifecycle_and_clinical_governance` |
+| `python scripts/verify_artifact.py` | Passed; 222 unique catalog IDs (164 `D`), 20 mandatory files, disabled safety flags and Markdown links |
+| `python scripts/smoke_baseline.py` | Passed; SQLite upgrade `0001_demo` -> `0010_odontogram_referrals_delegation_and_ops` (86 domain tables; 209 HTTP operations) |
+| Alembic `upgrade head --sql` (cwd `backend`) | Passed; offline PostgreSQL SQL generated through `0010_odontogram_referrals_delegation_and_ops` |
 | Next `npm test` / `npm run typecheck` / `npm run build` | Passed on Windows (4/4 contract & a11y tests, Next 15.5.29 / React 19.3.1, 0 npm audit issues) |
 | `python scripts/update_manifest.py --check` | Passed |
 
 ## Open risk ledger / technical debt
 | ID | Severity | Known truth and owner task |
 |---|---|---|
-| R-001 | High before PHI | T001/T015 synthetic token, RBAC/ABAC, break-glass & portal scoping implemented; live OIDC/MFA & independent security audit required before PHI (`SEC-G1`) |
+| R-001 | High before PHI | T001/T015/T020 synthetic token, RBAC/ABAC, break-glass, delegation & portal scoping implemented; live OIDC/MFA & independent security audit required before PHI (`SEC-G1`) |
 | R-002 | High | T002/T008 concurrency harnesses & CI `postgres:16` job added; verify remote CI run or local PG server (`T002`/`T008`) |
-| R-003 | High before clinical use | T004/T017 canonical snapshot + closure checklist gate implemented; DB-level append-only roles and real legal signer remain pending (`T004`) |
+| R-003 | High before clinical use | T004/T017/T019 canonical snapshot + closure checklist + structured export implemented; DB-level append-only roles and real legal signer remain pending (`T004`) |
 | R-004 | Critical before clinical use | Quarantined `FormRegistry` (`T003`), synthetic signing (`T004`), and statutory retention (`T010`) gated on named dentist + counsel review (`NEEDS_CLINICAL_REVIEW.md`) |
 | R-005 | Mitigated in synthetic foundation | `T010` envelope encryption + DR drill & `T014` hash-chained audit journal implemented; external Cloud KMS/HSM & WORM cloud sink required before real PHI |
 | R-006 | Mitigated for FHIR R4 | `T012` FHIR R4 `HTEST` + `Provenance` export/validator implemented; real Orthanc DICOMweb/OHIF server remains pending (`INT-004`) |
-| R-007 | High | Consent taxonomy (`T007`) & offline AI firewall (`T012`) built; real payment/messaging/external LLM providers remain disabled until formal legal/vendor approval |
+| R-007 | High | Consent taxonomy (`T007`) & offline AI firewall (`T012`/`T020`) built; real payment/messaging/external LLM providers remain disabled until formal legal/vendor approval |
 | R-008 | Commercial blocker | Denlyra brand/trademark and software license undecided (`Owner/counsel`) |
 | R-009 | Mitigated in Next.js workspaces | `T009` uses in-memory Bearer sessions + loopback `Host`/`Origin` proxy check + Node contract tests; provisioned Playwright live-OIDC browser E2E pending (`SEC-G1`) |
-| R-010 | Resolved in Alembic | Frozen explicit DDL chain `0001_demo` -> `0009_encounter_lifecycle_and_clinical_governance` |
+| R-010 | Resolved in Alembic | Frozen explicit DDL chain `0001_demo` -> `0010_odontogram_referrals_delegation_and_ops` |
 | R-011 | Resolved in `clinic-web` | `apps/clinic-web` enforces fixed `Asia/Ho_Chi_Minh` (`+07:00`) via `timezone.ts` |
 | R-012 | Resolved | Both generated OpenAPI TS client (`T009`) and signed clinic-scoped cursor pagination (`T014`) implemented and verified |
 | R-013 | Low / platform debt | Windows sandbox NTFS junction (`WinError 448`) fixed in `conftest.py`; Starlette/httpx deprecation warning remains |
@@ -99,11 +103,12 @@ Windows, repository `.venv`, CPython 3.12.14; Node 24.11.1 / npm 11.6.2.
 - [ADR-012](adr/ADR-012-clinic-operations-tamper-evident-audit-and-pagination.md): Clinic Operations Queue/Shift/Recall Governance, Hash-Chained Tamper-Evident Audit Journal, and Signed Cursor Pagination
 - [ADR-013](adr/ADR-013-patient-merge-breakglass-portal-and-kpi-lineage.md): Reversible Patient Merge, Short-TTL Break-Glass, Scoped Patient Portal & Attributable KPI Lineage
 - [ADR-014](adr/ADR-014-encounter-lifecycle-procedure-evidence-and-clinical-governance.md): Encounter Closure Gate, Clinician Procedure Evidence, Treatment Lifecycle & Protected Incident Governance
+- [ADR-015](adr/ADR-015-odontogram-revisions-referrals-delegation-and-ops-assistant.md): Optimistic Odontogram Revisions, Structured Clinical Export, Scoped Delegation & Allowlisted Ops Assistant
 
 ## Next tasks and human decisions
-1. **P1 clinical odontogram revisions, external referrals & structured export (`ODN-006`, `ODN-007`, `ODN-008`, `ODN-010`, `EMR-013`, `EMR-014`, `PAT-010`) — `T019` Optimistic Odontogram Restoration History, Reviewed External Referrals & Structured Clinical Export** — prevent concurrent last-write-wins on tooth restoration states, track reviewed external referral records and document expiry/eligibility flags without altering signed data, and export exact structured snapshot + attachment manifests.
-2. **P1 multi-branch aggregates, temporary delegation, staff handoffs & policy-aware read-only assistant (`ORG-007`, `ORG-009`, `HR-005`, `HR-006`, `CRM-001`, `CRM-009`, `AI-005`) — `T020` Scoped Multi-Branch Owner Aggregates, Auto-Expiring Delegation, Staff Handoffs & Policy-Aware Ops Assistant** — provide aggregate-only multi-branch owner metrics without pooling patient charts, time-boxed staff delegation, audited internal handoffs & complaint recovery queues, and an allowlisted read-only operations assistant.
+1. **P0/P1 facility licensing, duration templates, slot optimizer & receipt exports (`ORG-001`, `SCH-011`, `SCH-012`, `FIN-013`, `HR-001`, `HR-010`) — `T021` Licensed Facility Metadata, Procedure Duration Templates, Human-Approved Slot Optimizer & Traceable Financial Receipts** — store explicit facility license scope without inferring permission from display name, suggest duration/slots without mutating confirmed appointments, export traceable payment/charge receipts without fabricating bank proofs, and track timezone-correct attendance/overtime separate from clinical authorship.
+2. **P1 reviewed communications, anonymized satisfaction & incumbent migration cutover (`CRM-002`, `CRM-011`, `AI-006`, `INT-012`, `MIG-009`, `MIG-010`) — `T022` Reviewed Reminder Templates, Consent-Gated Communication Drafts, Anonymized Satisfaction & Cutover Readiness** — enforce approved send windows & consent on communication drafts, collect de-identified patient satisfaction feedback, validate incumbent software export hashes/schemas, and enforce parallel-run cutover checks preventing double-entry.
 3. **P0 external gates — `T002` & `M0`/`T003`/`T004`/`T010`** — inspect GitHub Actions `postgres-concurrency-tests` receipt (or run `verify_postgres_live.py` on PostgreSQL 16) and obtain dentist/counsel sign-off on [NEEDS_CLINICAL_REVIEW.md](clinical/NEEDS_CLINICAL_REVIEW.md) & [RETENTION_AND_DR_POLICY.md](operations/RETENTION_AND_DR_POLICY.md).
 
 ## Git and exact continuation
-Next session begins with `git status --short --branch`, `git log -2 --oneline`, `AGENTS.md`, this file, and [latest session report](sessions/2026-11-24_T017_T018_ENCOUNTER_LIFECYCLE_AND_GOVERNANCE.md). Run `./.venv/Scripts/python.exe -m pytest backend/tests -q`, author task packet `docs/tasks/T019_ODONTOGRAM_REVISIONS_REFERRALS_AND_EXPORT.md` and negative tests first before editing domain code.
+Next session begins with `git status --short --branch`, `git log -2 --oneline`, `AGENTS.md`, this file, and [latest session report](sessions/2026-11-25_T019_T020_ODONTOGRAM_DELEGATION_OPS_ASSISTANT.md). Run `./.venv/Scripts/python.exe -m pytest backend/tests -q`, author task packet `docs/tasks/T021_FACILITY_LICENSING_OPTIMIZER_AND_RECEIPTS.md` and negative tests first before editing domain code.

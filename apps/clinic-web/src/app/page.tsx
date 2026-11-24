@@ -2038,6 +2038,23 @@ export default function ClinicWorkspacePage() {
               >
                 Phát hành Phiên bản Bảng giá IMP-STD-01 (v+1)
               </button>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={async () => {
+                  setConflictMsg("");
+                  const r = await client.queryOpsAssistant({
+                    tool_name: "chair_utilization_summary",
+                    prompt_note: "Tóm tắt chỉ đọc hiệu suất ghế hôm nay",
+                  });
+                  if (!r.ok) return handleApiFailure(r.status, r.detail, r.conflict);
+                  setStatusMsg(
+                    `Trợ lý Vận hành Chỉ Đọc (${r.data.tool_name}, executed_write=${String(r.data.executed_any_write)}): ${r.data.proposed_human_action}`,
+                  );
+                }}
+              >
+                Hỏi Trợ lý Vận hành Chỉ Đọc (AI-005)
+              </button>
             </div>
           </section>
         </div>

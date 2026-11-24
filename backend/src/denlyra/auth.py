@@ -156,6 +156,29 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         "receptionist", "treatment_coordinator", "finance",
     },
     "quality.report_read": {"clinic_owner", "medical_director"},
+    "odontogram.write": {"medical_director", "dentist"},
+    "referral.intake": {
+        "clinic_owner", "medical_director", "dentist",
+        "receptionist", "treatment_coordinator",
+    },
+    "referral.review": {"medical_director", "dentist"},
+    "handoff.read": {
+        "clinic_owner", "medical_director", "dentist", "assistant",
+        "receptionist", "treatment_coordinator",
+    },
+    "handoff.write": {
+        "clinic_owner", "medical_director", "dentist", "assistant",
+        "receptionist", "treatment_coordinator",
+    },
+    "complaint.create": {
+        "clinic_owner", "medical_director", "dentist",
+        "receptionist", "treatment_coordinator",
+    },
+    "complaint.read": {
+        "clinic_owner", "medical_director", "dentist",
+        "receptionist", "treatment_coordinator",
+    },
+    "complaint.read_private": {"clinic_owner", "medical_director"},
     "signed_url.create": {"clinic_owner", "medical_director", "dentist"},
     "signed_url.consume": {"clinic_owner", "medical_director", "dentist"},
 }
@@ -333,6 +356,38 @@ def check_permission(
 ) -> None:
     allowed_roles = ROLE_PERMISSIONS.get(permission, set())
     if principal.role not in allowed_roles:
+        delegated = None
+        if principal.authenticated:
+            now = m.utcnow()
+            delegated = db.scalar(
+                select(m.TemporaryDelegationGrant).where(
+                    m.TemporaryDelegationGrant.clinic_id == principal.clinic_id,
+                    m.TemporaryDelegationGrant.delegate_staff_id == principal.staff_id,
+                    m.TemporaryDelegationGrant.permission == permission,
+                    m.TemporaryDelegationGrant.revoked.is_(False),
+                    m.TemporaryDelegationGrant.expires_at > now,
+                )
+            )
+        if delegated is not None:
+            db.add(
+                m.AuditEvent(
+                    clinic_id=principal.clinic_id,
+                    actor_demo=principal.actor_label,
+                    action="auth.delegated_permission_used",
+                    subject_type=subject_type,
+                    subject_id=subject_id[:36],
+                    metadata_json=json.dumps(
+                        {
+                            "delegation_id": delegated.id,
+                            "permission": permission,
+                            "reason": delegated.reason,
+                        },
+                        ensure_ascii=False,
+                    ),
+                )
+            )
+            db.commit()
+            return
         db.add(
             m.AuditEvent(
                 clinic_id=principal.clinic_id,

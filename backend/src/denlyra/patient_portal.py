@@ -723,6 +723,16 @@ def get_patient_portal_overview(db: Session, portal: PortalPrincipal) -> dict:
         or 0
     )
 
+    visible_contacts = db.scalars(
+        select(m.PatientContactLog)
+        .where(
+            m.PatientContactLog.clinic_id == portal.clinic_id,
+            m.PatientContactLog.patient_id == portal.patient_id,
+            m.PatientContactLog.visibility == "patient_visible",
+        )
+        .order_by(m.PatientContactLog.created_at.desc())
+    ).all()
+
     svc.audit(
         db,
         portal.clinic_id,
@@ -759,6 +769,15 @@ def get_patient_portal_overview(db: Session, portal: PortalPrincipal) -> dict:
                 "created_at": p.created_at.isoformat() + "Z",
             }
             for p in plan_summaries
+        ],
+        "contact_logs": [
+            {
+                "id": c.id,
+                "channel": c.channel,
+                "summary_text": c.summary_text,
+                "created_at": c.created_at.isoformat() + "Z",
+            }
+            for c in visible_contacts
         ],
         "financial_summary": {
             "total_charges_vnd": total_charges,

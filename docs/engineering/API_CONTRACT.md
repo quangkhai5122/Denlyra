@@ -130,6 +130,14 @@ Base URL: `http://127.0.0.1:8766`, OpenAPI at `/api/docs`. **Start only after ex
 | GET/POST `/api/v1/operations/waitlist`, `/{id}/prepare-outreach`, `/{id}/confirm-booking` | `appointment.read`/`write` | `WaitlistCreate` / `AppointmentCreate` | Consent-gated waitlist outreach + explicit staff slot booking (`SCH-008`) |
 | GET/POST `/api/v1/finance/installments` & `/{id}/tranches/{tid}/log-reminder` | `finance.read`/`write` | `InstallmentScheduleCreate` | Requires active `financial` consent; `auto_charge_enabled=False` enforced (`FIN-008`) |
 | GET/POST `/api/v1/operations/incidents` | `quality.report_read`/`report_create` | `QualityIncidentCreate` | Protected quality incident queue (`403` read for non-leadership; `422` on AI diagnosis, `HR-008`) |
+| GET/POST `/api/v1/odontogram/legend`, PUT `/api/v1/patients/{id}/odontogram/restorations/{tooth}`, GET `/export` | `odontogram.read`/`write` | `OdontogramLegendCreate` / `RestorationUpsert` | Versioned legend (`ODN-006`), optimistic restoration revisions (`409` stale, `ODN-007`/`010`), and hashed export (`ODN-008`) |
+| GET/POST `/api/v1/patients/{id}/referrals` & `/api/v1/referrals/{id}/review` | `referral.intake`/`review` | `ExternalReferralCreate` / `Review` | Quarantined external referral intake + clinician review (`EMR-013`) |
+| GET `/api/v1/patients/{id}/document-eligibility` & `/api/v1/clinical-documents/{id}/structured-export` | `patient.read`/`clinical_doc.read` | eligibility / archive package | Non-destructive consent/allergy flags (`PAT-010`) and signed snapshot + attachment manifest export (`EMR-014`) |
+| POST `/api/v1/org/branch-scope-grants` & GET `/api/v1/org/multi-branch-aggregates` | `staff.manage` | `BranchScopeGrantCreate` | Aggregate-only multi-branch owner KPIs without chart pooling (`ORG-007`) |
+| GET/POST `/api/v1/auth/delegations` & `/{id}/revoke` | `staff.manage` | `TemporaryDelegationCreate` | Auto-expiring operational delegation (`422` on clinical signing delegation, `ORG-009`) |
+| GET/POST `/api/v1/operations/staff-tasks`, `/escalate-overdue`, `/handoffs` | `operations.*`/`handoff.*` | `StaffOperationalTaskCreate` / `InternalHandoffCreate` | Overdue task escalations (`HR-005`) and patient/task-tied audited handoffs (`HR-006`) |
+| GET/POST `/api/v1/patients/{id}/contact-timeline` & `/api/v1/crm/complaints` | `operations.recall`/`complaint.*` | `PatientContactLogCreate` / `ServiceComplaintCreate` | Portal-isolated `internal_staff_only` logs (`CRM-001`) and leadership-redacted complaint notes (`CRM-009`) |
+| POST `/api/v1/ai/ops-assistant/query` | `context.read` + tool RBAC | `OpsAssistantQueryRequest` | Allowlisted read-only ops tools + injection firewall (`executed_any_write=False`, `AI-005`) |
 | GET `/api/v1/dashboard` | `dashboard.read` | basic counts | No clinical or financial inference |
 | GET `/api/v1/audit-events` | `audit.read` | demo history | Includes mutation and sensitive clinical read/denial events |
 
