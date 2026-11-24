@@ -18,10 +18,13 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from . import archive_dr, auth, models as m, services as svc
+from . import ai_harness, archive_dr, auth, fhir_interop, inventory, models as m, services as svc
 from .config import Settings
 from .db import build_engine, init_demo_schema, session_factory
 from .schemas import (
+    AIDictationExtractRequest,
+    AIDraftAcceptRequest,
+    AITimelineSummaryRequest,
     AllocationCreate,
     AppointmentCreate,
     AppointmentReschedule,
@@ -40,6 +43,7 @@ from .schemas import (
     EncounterCreate,
     EstimateAcceptRequest,
     EstimateCreate,
+    FhirBundleValidateRequest,
     FormOfficialExportRequest,
     FormTemplateCreate,
     FormValidatePreviewRequest,
@@ -59,11 +63,20 @@ from .schemas import (
     PaymentCreate,
     PlanCreate,
     PlanReassessmentCreate,
+    PurchaseOrderCreate,
+    PurchaseOrderReceiveRequest,
     RefundCreate,
     ResourceCreateRequest,
     RestoreDrillRequest,
     SignedUrlCreateRequest,
+    SkuCreate,
     StaffCreateRequest,
+    StockAdjustmentApproveRequest,
+    StockAdjustmentCreate,
+    StockConsumptionCreate,
+    StockReservationCreate,
+    StockReservationReleaseRequest,
+    SupplierCreate,
     TaskCoordinationLinkCreate,
     TaskCreate,
     TaskDependenciesUpdate,
@@ -78,7 +91,13 @@ def doc(item):
     """Serialize only fields explicitly safe for synthetic demo output."""
     output = {}
     for column in item.__table__.columns:
-        if column.name in {"metadata_json", "wrapped_dek_b64", "manifest_json"}:
+        if column.name in {
+            "metadata_json",
+            "wrapped_dek_b64",
+            "manifest_json",
+            "extracted_json",
+            "details_json",
+        }:
             continue
         value = getattr(item, column.name)
         output[column.name] = value.isoformat() + "Z" if isinstance(value, datetime) else value
@@ -1113,6 +1132,202 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 select(m.RestoreDrillRun)
                 .where(m.RestoreDrillRun.clinic_id == clinic_id)
                 .order_by(m.RestoreDrillRun.created_at.desc())
+            )
+        ]
+
+    @app.get("/api/v1/inventory/suppliers")
+    def list_suppliers(context=Depends(require_perm("inventory.read"))):
+        db, clinic_id, _ = context
+        return [
+            doc(s)
+            for s in db.scalars(
+                select(m.InventorySupplier)
+                .where(m.InventorySupplier.clinic_id == clinic_id)
+                .order_by(m.InventorySupplier.created_at.desc())
+            )
+        ]
+
+    @app.post("/api/v1/inventory/suppliers", status_code=201)
+    def add_supplier(
+        payload: SupplierCreate, context=Depends(require_perm("inventory.write"))
+    ):
+        db, clinic_id, actor = context
+        return doc(inventory.create_supplier(db, clinic_id, payload, actor))
+
+    @app.get("/api/v1/inventory/skus")
+    def list_skus(context=Depends(require_perm("inventory.read"))):
+        db, clinic_id, _ = context
+        return [
+            inventory.get_sku_stock_summary(db, clinic_id, s.id)
+            for s in db.scalars(
+                select(m.InventorySku)
+                .where(m.InventorySku.clinic_id == clinic_id)
+                .order_by(m.InventorySku.sku_code)
+            )
+        ]
+
+    @app.post("/api/v1/inventory/skus", status_code=201)
+    def add_sku(payload: SkuCreate, context=Depends(require_perm("inventory.write"))):
+        db, clinic_id, actor = context
+        return doc(inventory.create_sku(db, clinic_id, payload, actor))
+
+    @app.get("/api/v1/inventory/skus/{sku_id}/stock")
+    def sku_stock(sku_id: str, context=Depends(require_perm("inventory.read"))):
+        db, clinic_id, _ = context
+        return inventory.get_sku_stock_summary(db, clinic_id, sku_id)
+
+    @app.get("/api/v1/inventory/skus/{sku_id}/fefo-picks")
+    def sku_fefo_picks(
+        sku_id: str,
+        required_qty: int = 1,
+        as_of_date: str | None = None,
+        context=Depends(require_perm("inventory.read")),
+    ):
+        db, clinic_id, _ = context
+        return inventory.get_fefo_picks(db, clinic_id, sku_id, required_qty, as_of_date)
+
+    @app.post("/api/v1/inventory/purchase-orders", status_code=201)
+    def add_purchase_order(
+        payload: PurchaseOrderCreate, context=Depends(require_perm("inventory.write"))
+    ):
+        db, clinic_id, actor = context
+        return doc(inventory.create_purchase_order(db, clinic_id, payload, actor))
+
+    @app.post("/api/v1/inventory/purchase-orders/{po_id}/receive", status_code=201)
+    def receive_po(
+        po_id: str,
+        payload: PurchaseOrderReceiveRequest,
+        context=Depends(require_perm("inventory.write")),
+    ):
+        db, clinic_id, actor = context
+        return inventory.receive_purchase_order(db, clinic_id, po_id, payload, actor)
+
+    @app.post("/api/v1/inventory/reservations", status_code=201)
+    def add_stock_reservation(
+        payload: StockReservationCreate,
+        context=Depends(require_perm("inventory.write")),
+    ):
+        db, clinic_id, actor = context
+        return doc(inventory.create_reservation(db, clinic_id, payload, actor))
+
+    @app.post("/api/v1/inventory/reservations/{reservation_id}/release")
+    def release_stock_reservation(
+        reservation_id: str,
+        payload: StockReservationReleaseRequest,
+        context=Depends(require_perm("inventory.write")),
+    ):
+        db, clinic_id, actor = context
+        return doc(
+            inventory.release_reservation(db, clinic_id, reservation_id, payload, actor)
+        )
+
+    @app.post("/api/v1/inventory/consumptions", status_code=201)
+    def consume_stock(
+        payload: StockConsumptionCreate,
+        context=Depends(require_perm("inventory.consume")),
+    ):
+        db, clinic_id, actor = context
+        return doc(inventory.consume_for_procedure(db, clinic_id, payload, actor))
+
+    @app.post("/api/v1/inventory/adjustments", status_code=201)
+    def request_adjustment(
+        payload: StockAdjustmentCreate,
+        ctx_tuple=Depends(require_principal_perm("inventory.adjust_request")),
+    ):
+        db, clinic_id, actor, principal = ctx_tuple
+        return doc(
+            inventory.request_stock_adjustment(
+                db, clinic_id, principal.staff_id, payload, actor
+            )
+        )
+
+    @app.post("/api/v1/inventory/adjustments/{adjustment_id}/approve")
+    def approve_adjustment(
+        adjustment_id: str,
+        payload: StockAdjustmentApproveRequest,
+        ctx_tuple=Depends(require_principal_perm("inventory.adjust_approve")),
+    ):
+        db, clinic_id, actor, principal = ctx_tuple
+        return doc(
+            inventory.approve_stock_adjustment(
+                db, clinic_id, adjustment_id, principal.staff_id, payload, actor
+            )
+        )
+
+    @app.get("/api/v1/inventory/alerts")
+    def inventory_alerts(
+        as_of_date: str | None = None,
+        context=Depends(require_perm("inventory.read")),
+    ):
+        db, clinic_id, _ = context
+        return inventory.get_inventory_alerts(db, clinic_id, as_of_date)
+
+    @app.get("/api/v1/interop/fhir/r4/patients/{patient_id}/bundle")
+    def export_fhir_patient_bundle(
+        patient_id: str,
+        context=Depends(require_perm("interop.fhir_read", audit_read=True)),
+    ):
+        db, clinic_id, _ = context
+        return fhir_interop.export_patient_fhir_r4_bundle(db, clinic_id, patient_id)
+
+    @app.post("/api/v1/interop/fhir/r4/validate-bundle")
+    def validate_fhir_bundle_endpoint(
+        payload: FhirBundleValidateRequest,
+        context=Depends(require_perm("interop.fhir_read")),
+    ):
+        _, clinic_id, _ = context
+        return fhir_interop.validate_fhir_r4_bundle(clinic_id, payload.bundle)
+
+    @app.get("/api/v1/ai/models")
+    def list_ai_models(context=Depends(require_perm("ai.draft"))):
+        db, _, _ = context
+        return ai_harness.list_registered_models(db)
+
+    @app.post("/api/v1/ai/drafts/dictation-extract", status_code=201)
+    def ai_dictation_extract(
+        payload: AIDictationExtractRequest,
+        context=Depends(require_perm("ai.draft")),
+    ):
+        db, clinic_id, actor = context
+        return ai_harness.create_dictation_extract_draft(
+            db, clinic_id, cfg.ai_assist_enabled, payload, actor
+        )
+
+    @app.post("/api/v1/ai/drafts/timeline-summary", status_code=201)
+    def ai_timeline_summary(
+        payload: AITimelineSummaryRequest,
+        context=Depends(require_perm("ai.draft")),
+    ):
+        db, clinic_id, actor = context
+        return ai_harness.create_timeline_summary_draft(
+            db, clinic_id, cfg.ai_assist_enabled, payload, actor
+        )
+
+    @app.post("/api/v1/ai/drafts/{draft_id}/accept-into-note-draft", status_code=201)
+    def ai_accept_draft(
+        draft_id: str,
+        payload: AIDraftAcceptRequest,
+        ctx_tuple=Depends(require_principal_perm("ai.accept_clinical")),
+    ):
+        db, clinic_id, actor, principal = ctx_tuple
+        return ai_harness.accept_ai_draft_into_note(
+            db, clinic_id, draft_id, principal.staff_id, payload, actor
+        )
+
+    @app.post("/api/v1/ai/evaluations/run", status_code=201)
+    def run_ai_evaluation(context=Depends(require_perm("ai.evaluate"))):
+        db, clinic_id, actor = context
+        return ai_harness.run_offline_evaluation_suite(db, clinic_id, actor)
+
+    @app.get("/api/v1/ai/evaluations")
+    def list_ai_evaluations(context=Depends(require_perm("ai.evaluate"))):
+        db, clinic_id, _ = context
+        return [
+            doc(r)
+            for r in db.scalars(
+                select(m.AIEvaluationRun)
+                .where(m.AIEvaluationRun.clinic_id == clinic_id)
+                .order_by(m.AIEvaluationRun.created_at.desc())
             )
         ]
 

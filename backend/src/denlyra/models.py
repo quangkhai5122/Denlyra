@@ -660,3 +660,168 @@ class RestoreDrillRun(Base):
     failure_detail: Mapped[str | None] = mapped_column(String(400))
     actor_demo: Mapped[str] = mapped_column(String(100), nullable=False)
     created_at: Mapped[datetime] = created_col()
+
+
+class InventorySupplier(Base):
+    __tablename__ = "inventory_supplier"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    name: Mapped[str] = mapped_column(String(160), nullable=False)
+    tax_code_demo: Mapped[str] = mapped_column(String(60), nullable=False)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    actor_demo: Mapped[str] = mapped_column(String(100), nullable=False)
+    created_at: Mapped[datetime] = created_col()
+    __table_args__ = (
+        UniqueConstraint("clinic_id", "tax_code_demo", name="uq_supplier_clinic_tax"),
+    )
+
+
+class InventorySku(Base):
+    __tablename__ = "inventory_sku"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    sku_code: Mapped[str] = mapped_column(String(60), nullable=False)
+    name: Mapped[str] = mapped_column(String(180), nullable=False)
+    unit: Mapped[str] = mapped_column(String(32), nullable=False)
+    lot_tracked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    reorder_threshold: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    actor_demo: Mapped[str] = mapped_column(String(100), nullable=False)
+    created_at: Mapped[datetime] = created_col()
+    __table_args__ = (
+        UniqueConstraint("clinic_id", "sku_code", name="uq_sku_clinic_code"),
+        UniqueConstraint("clinic_id", "id", name="uq_sku_clinic_id"),
+    )
+
+
+class PurchaseOrder(Base):
+    __tablename__ = "purchase_order"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    supplier_id: Mapped[str] = mapped_column(ForeignKey("inventory_supplier.id"), nullable=False)
+    sku_id: Mapped[str] = mapped_column(ForeignKey("inventory_sku.id"), nullable=False)
+    ordered_qty: Mapped[int] = mapped_column(Integer, nullable=False)
+    delivered_qty: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    inspected_accepted_qty: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="ordered")
+    actor_demo: Mapped[str] = mapped_column(String(100), nullable=False)
+    created_at: Mapped[datetime] = created_col()
+    __table_args__ = (CheckConstraint("ordered_qty > 0", name="ck_po_ordered_positive"),)
+
+
+class InventoryLot(Base):
+    __tablename__ = "inventory_lot"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    sku_id: Mapped[str] = mapped_column(ForeignKey("inventory_sku.id"), nullable=False)
+    purchase_order_id: Mapped[str | None] = mapped_column(ForeignKey("purchase_order.id"))
+    lot_number: Mapped[str] = mapped_column(String(80), nullable=False)
+    expiry_date: Mapped[str] = mapped_column(String(10), nullable=False)
+    quarantined: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    actor_demo: Mapped[str] = mapped_column(String(100), nullable=False)
+    created_at: Mapped[datetime] = created_col()
+    __table_args__ = (
+        UniqueConstraint("clinic_id", "sku_id", "lot_number", name="uq_lot_clinic_sku_number"),
+        UniqueConstraint("clinic_id", "id", name="uq_lot_clinic_id"),
+    )
+
+
+class StockMovement(Base):
+    __tablename__ = "stock_movement"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    sku_id: Mapped[str] = mapped_column(ForeignKey("inventory_sku.id"), nullable=False)
+    lot_id: Mapped[str] = mapped_column(ForeignKey("inventory_lot.id"), nullable=False)
+    movement_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    quantity_delta: Mapped[int] = mapped_column(Integer, nullable=False)
+    reference_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    reference_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    note_demo: Mapped[str] = mapped_column(String(260), nullable=False, default="")
+    actor_demo: Mapped[str] = mapped_column(String(100), nullable=False)
+    created_at: Mapped[datetime] = created_col()
+    __table_args__ = (CheckConstraint("quantity_delta != 0", name="ck_stock_movement_nonzero"),)
+
+
+class StockReservation(Base):
+    __tablename__ = "stock_reservation"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    sku_id: Mapped[str] = mapped_column(ForeignKey("inventory_sku.id"), nullable=False)
+    lot_id: Mapped[str] = mapped_column(ForeignKey("inventory_lot.id"), nullable=False)
+    patient_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    appointment_id: Mapped[str | None] = mapped_column(String(36))
+    reserved_qty: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="active")
+    release_reason: Mapped[str | None] = mapped_column(String(260))
+    actor_demo: Mapped[str] = mapped_column(String(100), nullable=False)
+    created_at: Mapped[datetime] = created_col()
+    __table_args__ = (
+        CheckConstraint("reserved_qty > 0", name="ck_reservation_positive"),
+        ForeignKeyConstraint(["clinic_id", "patient_id"], ["patient.clinic_id", "patient.id"]),
+    )
+
+
+class StockAdjustmentRequest(Base):
+    __tablename__ = "stock_adjustment_request"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    sku_id: Mapped[str] = mapped_column(ForeignKey("inventory_sku.id"), nullable=False)
+    lot_id: Mapped[str] = mapped_column(ForeignKey("inventory_lot.id"), nullable=False)
+    delta_qty: Mapped[int] = mapped_column(Integer, nullable=False)
+    reason: Mapped[str] = mapped_column(String(300), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending_dual_approval")
+    requester_staff_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    approver_staff_id: Mapped[str | None] = mapped_column(String(36))
+    approval_note: Mapped[str | None] = mapped_column(String(300))
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime())
+    created_at: Mapped[datetime] = created_col()
+    __table_args__ = (CheckConstraint("delta_qty != 0", name="ck_adj_delta_nonzero"),)
+
+
+class AIModelRegistry(Base):
+    __tablename__ = "ai_model_registry"
+    id: Mapped[str] = id_col()
+    model_code: Mapped[str] = mapped_column(String(80), nullable=False, unique=True)
+    version_digest: Mapped[str] = mapped_column(String(64), nullable=False)
+    license_id: Mapped[str] = mapped_column(String(60), nullable=False)
+    data_locality: Mapped[str] = mapped_column(
+        String(40), nullable=False, default="local_loopback_no_egress"
+    )
+    purpose: Mapped[str] = mapped_column(String(160), nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = created_col()
+
+
+class AIDraftArtifact(Base):
+    __tablename__ = "ai_draft_artifact"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    patient_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    encounter_id: Mapped[str | None] = mapped_column(String(36))
+    model_code: Mapped[str] = mapped_column(String(80), nullable=False)
+    draft_kind: Mapped[str] = mapped_column(String(40), nullable=False)
+    status: Mapped[str] = mapped_column(String(40), nullable=False, default="unreviewed_ai_draft")
+    allergy_state: Mapped[str] = mapped_column(
+        String(40), nullable=False, default="abstained_not_stated"
+    )
+    extracted_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    draft_text: Mapped[str] = mapped_column(Text, nullable=False)
+    accepted_note_id: Mapped[str | None] = mapped_column(String(36))
+    reviewed_by_staff_id: Mapped[str | None] = mapped_column(String(36))
+    actor_demo: Mapped[str] = mapped_column(String(100), nullable=False)
+    created_at: Mapped[datetime] = created_col()
+
+
+class AIEvaluationRun(Base):
+    __tablename__ = "ai_evaluation_run"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    model_code: Mapped[str] = mapped_column(String(80), nullable=False)
+    total_cases: Mapped[int] = mapped_column(Integer, nullable=False)
+    passed_cases: Mapped[int] = mapped_column(Integer, nullable=False)
+    extraction_pass_rate_pct: Mapped[int] = mapped_column(Integer, nullable=False)
+    injection_block_rate_pct: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False)
+    details_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    actor_demo: Mapped[str] = mapped_column(String(100), nullable=False)
+    created_at: Mapped[datetime] = created_col()

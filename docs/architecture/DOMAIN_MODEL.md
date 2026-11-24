@@ -61,7 +61,7 @@ Version 0.1 · Owner: software/domain architect + dental clinical lead · Status
 | INV-020 | Form and signer evidence specific to exact approved version | signature adapter | Quarantined FormRegistry (`T003`) + FakeSyntheticSignatureProvider (`T004`); legal signer gated |
 | INV-021 | Access revocation removes future clinical write permission | identity provider + staff active/token_version | Synthetic staff deactivation + JTI revocation enforced (T001) |
 | INV-022 | Missing allergy history != explicit negative | clinical structured types | Tri-state FormRegistry validator enforced (T003) |
-| INV-023 | Stock reservation != consumption | inventory ledger | Not implemented |
+| INV-023 | Stock reservation != consumption | inventory ledger | Yes — `stock_reservation` holds allocatable qty while `stock_movement` append-only ledger tracks physical qty (`T011`) |
 | INV-024 | Restore must reconcile database with media and signature evidence | full archive manifest | Yes — signed `BackupManifest` + isolated `RestoreDrillRun` verifying DB + encrypted blobs + signature receipts (`T010`) |
 
 ## Clinical note states

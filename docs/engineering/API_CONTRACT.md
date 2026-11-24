@@ -85,6 +85,25 @@ Base URL: `http://127.0.0.1:8766`, OpenAPI at `/api/docs`. **Start only after ex
 | GET/POST `/api/v1/archive/backups` | `archive.read`/`restore` | `BackupCreateRequest` | Creates/lists signed cross-store backup manifest + encrypted object bundle (`T010`) |
 | POST `/api/v1/archive/backups/{id}/restore-drill` | `archive.restore` | `RestoreDrillRequest` | Restores to isolated SQLite DB, verifies objects/keys/signatures, measures `rto_ms` & `rpo_lag_ms` (`DR-04`, `DR-05`, `NEG-13`) |
 | GET `/api/v1/archive/restore-drills` | `archive.read` | drill history | Lists passed/failed isolated DR restore drill runs (`T010`) |
+| GET/POST `/api/v1/inventory/suppliers` | `inventory.read`/`write` | `SupplierCreate` | Clinic-scoped supplier registry with duplicate tax_code guard (`INV-002`) |
+| GET/POST `/api/v1/inventory/skus` | `inventory.read`/`write` | `SkuCreate` | Clinic-scoped material SKU catalog + stock summary (`INV-001`) |
+| GET `/api/v1/inventory/skus/{id}/stock` | `inventory.read` | SKU + lot balances | Physical vs active reserved vs available stock derived from movements (`INV-005`) |
+| GET `/api/v1/inventory/skus/{id}/fefo-picks` | `inventory.read` | FEFO pick list | Earliest-expiry picks skipping expired & quarantined lots (`INV-009`) |
+| POST `/api/v1/inventory/purchase-orders` | `inventory.write` | `PurchaseOrderCreate` | Opens clinic purchase order (`INV-003`) |
+| POST `/api/v1/inventory/purchase-orders/{id}/receive` | `inventory.write` | `PurchaseOrderReceiveRequest` | Separates ordered/delivered/inspected_accepted qty; creates `InventoryLot` + `receipt_accepted` movement |
+| POST `/api/v1/inventory/reservations` | `inventory.write` | `StockReservationCreate` | Holds allocatable stock without deducting physical balance (`INV-006`, `INV-023`) |
+| POST `/api/v1/inventory/reservations/{id}/release` | `inventory.write` | `StockReservationReleaseRequest` | Releases active reservation without fabricating receipt |
+| POST `/api/v1/inventory/consumptions` | `inventory.consume` | `StockConsumptionCreate` | Clinician/assistant encounter-linked consumption; blocks expired/quarantined lots (`INV-004`, `INV-007`) |
+| POST `/api/v1/inventory/adjustments` | `inventory.adjust_request` | `StockAdjustmentCreate` | Opens dual-control stock adjustment request (`INV-010`) |
+| POST `/api/v1/inventory/adjustments/{id}/approve` | `inventory.adjust_approve` | `StockAdjustmentApproveRequest` | Distinct `clinic_owner`/`medical_director` approves (`409` on self-approval); appends movement |
+| GET `/api/v1/inventory/alerts` | `inventory.read` | alert summary | Low-stock SKUs, expired/near-expiry lots, and shrinkage movements (`INV-008`, `RPT-008`) |
+| GET `/api/v1/interop/fhir/r4/patients/{id}/bundle` | `interop.fhir_read` | FHIR R4 Bundle | Exports clinic-scoped `Patient`/`Practitioner`/`Appointment`/`Encounter`/`DocumentReference`/`Provenance` tagged `HTEST` (`INT-002`, `INT-003`) |
+| POST `/api/v1/interop/fhir/r4/validate-bundle` | `interop.fhir_read` | `FhirBundleValidateRequest` | Validates `HTEST`, clinic scope, and blocks forged legal signature claims (`409`) |
+| GET `/api/v1/ai/models` | `ai.draft` | local model registry | Lists registered zero-egress local extractors (`AI-011`) |
+| POST `/api/v1/ai/drafts/dictation-extract` | `ai.draft` | `AIDictationExtractRequest` | Span extraction + tri-state allergy abstention (`INV-022`); `409` on prompt injection (`AI-010`); `503` when disabled (`AI-014`) |
+| POST `/api/v1/ai/drafts/timeline-summary` | `ai.draft` | `AITimelineSummaryRequest` | Source-linked longitudinal summary without inferred diagnosis (`AI-004`) |
+| POST `/api/v1/ai/drafts/{id}/accept-into-note-draft` | `ai.accept_clinical` | `AIDraftAcceptRequest` | Clinician-only acceptance creating `draft` `ClinicalNote` (never locked/signed) (`AI-003`) |
+| GET/POST `/api/v1/ai/evaluations` & `/run` | `ai.evaluate` | benchmark results | Runs/lists offline extraction & prompt-injection benchmark (`AI-009`, `AI-010`) |
 | GET `/api/v1/dashboard` | `dashboard.read` | basic counts | No clinical or financial inference |
 | GET `/api/v1/audit-events` | `audit.read` | demo history | Includes mutation and sensitive clinical read/denial events |
 

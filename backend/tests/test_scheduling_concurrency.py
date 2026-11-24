@@ -42,10 +42,11 @@ def test_alembic_upgrade_from_empty_and_from_0001_fixture_preserves_data(tmp_pat
                 )
             )
 
-        # Step 2: Upgrade existing 0001_demo DB through 0002/0003/0004 to head (0005_archive_and_dr)
+        # Step 2: Upgrade existing 0001_demo DB through 0002..0005 to head (0006_inventory_fhir_and_ai_harness)
         command.upgrade(cfg, "0002_hardening")
         command.upgrade(cfg, "0003_treatment_and_signing")
         command.upgrade(cfg, "0004_lab_consent_finance_and_migration")
+        command.upgrade(cfg, "0005_archive_and_dr")
         command.upgrade(cfg, "head")
         tables_head = set(inspect(engine).get_table_names())
         assert "revoked_token" in tables_head
@@ -59,9 +60,11 @@ def test_alembic_upgrade_from_empty_and_from_0001_fixture_preserves_data(tmp_pat
         assert "archive_object" in tables_head
         assert "backup_manifest" in tables_head
         assert "restore_drill_run" in tables_head
+        assert "stock_movement" in tables_head
+        assert "ai_draft_artifact" in tables_head
         assert "schema_migration_meta" in tables_head
         with engine.connect() as conn:
-            assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0005_archive_and_dr"
+            assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0006_inventory_fhir_and_ai_harness"
             preserved = conn.execute(
                 text("SELECT display_name FROM patient WHERE id = 'pat-v1-0001'")
             ).scalar()

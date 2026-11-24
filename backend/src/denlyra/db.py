@@ -40,6 +40,34 @@ BEGIN
 END;
 """
 
+SQLITE_STOCK_MOVEMENT_NO_UPDATE_TRIGGER = """
+CREATE TRIGGER IF NOT EXISTS tr_stock_movement_no_update
+BEFORE UPDATE ON stock_movement
+BEGIN
+    SELECT RAISE(ABORT, 'stock_movement_append_only_no_update');
+END;
+"""
+
+SQLITE_STOCK_MOVEMENT_NO_DELETE_TRIGGER = """
+CREATE TRIGGER IF NOT EXISTS tr_stock_movement_no_delete
+BEFORE DELETE ON stock_movement
+BEGIN
+    SELECT RAISE(ABORT, 'stock_movement_append_only_no_delete');
+END;
+"""
+
+SQLITE_STOCK_MOVEMENT_BOUNDS_TRIGGER = """
+CREATE TRIGGER IF NOT EXISTS tr_stock_movement_lot_bounds
+BEFORE INSERT ON stock_movement
+WHEN NEW.quantity_delta < 0 AND (
+    (SELECT COALESCE(SUM(sm.quantity_delta), 0) FROM stock_movement sm WHERE sm.lot_id = NEW.lot_id)
+    + NEW.quantity_delta < 0
+)
+BEGIN
+    SELECT RAISE(ABORT, 'stock_movement_lot_negative_balance');
+END;
+"""
+
 
 class Base(DeclarativeBase):
     pass
@@ -71,6 +99,9 @@ def init_demo_schema(engine):
         with engine.begin() as conn:
             conn.execute(text(SQLITE_BOOKING_OVERLAP_TRIGGER))
             conn.execute(text(SQLITE_ALLOCATION_BOUNDS_TRIGGER))
+            conn.execute(text(SQLITE_STOCK_MOVEMENT_NO_UPDATE_TRIGGER))
+            conn.execute(text(SQLITE_STOCK_MOVEMENT_NO_DELETE_TRIGGER))
+            conn.execute(text(SQLITE_STOCK_MOVEMENT_BOUNDS_TRIGGER))
 
 
 def session_scope(factory) -> Generator[Session, None, None]:

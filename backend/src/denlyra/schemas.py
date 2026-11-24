@@ -374,3 +374,78 @@ class BackupCreateRequest(BaseModel):
 class RestoreDrillRequest(BaseModel):
     target_clinic_id: str | None = None
     override_master_secret: str | None = None
+
+
+class SupplierCreate(BaseModel):
+    name: str = Field(min_length=2, max_length=160)
+    tax_code_demo: str = Field(min_length=3, max_length=60)
+
+
+class SkuCreate(BaseModel):
+    sku_code: str = Field(min_length=2, max_length=60)
+    name: str = Field(min_length=2, max_length=180)
+    unit: str = Field(min_length=1, max_length=32)
+    lot_tracked: bool = True
+    reorder_threshold: int = Field(default=0, ge=0, le=100000)
+
+
+class PurchaseOrderCreate(BaseModel):
+    supplier_id: str
+    sku_id: str
+    ordered_qty: int = Field(ge=1, le=100000)
+
+
+class PurchaseOrderReceiveRequest(BaseModel):
+    lot_number: str = Field(min_length=2, max_length=80)
+    expiry_date: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
+    delivered_qty: int = Field(ge=1, le=100000)
+    inspected_accepted_qty: int = Field(ge=0, le=100000)
+    quarantined: bool = False
+
+
+class StockReservationCreate(BaseModel):
+    sku_id: str
+    lot_id: str
+    reserved_qty: int = Field(ge=1, le=100000)
+    patient_id: str
+    appointment_id: str | None = None
+
+
+class StockReservationReleaseRequest(BaseModel):
+    reason: str = Field(min_length=2, max_length=260)
+
+
+class StockConsumptionCreate(BaseModel):
+    lot_id: str
+    encounter_id: str
+    consumed_qty: int = Field(ge=1, le=100000)
+    reservation_id: str | None = None
+    procedure_note_demo: str = Field(default="", max_length=260)
+    as_of_date: str | None = Field(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$")
+
+
+class StockAdjustmentCreate(BaseModel):
+    lot_id: str
+    delta_qty: int = Field(ge=-100000, le=100000)
+    reason: str = Field(min_length=3, max_length=300)
+
+
+class StockAdjustmentApproveRequest(BaseModel):
+    approval_note: str = Field(min_length=3, max_length=300)
+
+
+class FhirBundleValidateRequest(BaseModel):
+    bundle: dict
+
+
+class AIDictationExtractRequest(BaseModel):
+    encounter_id: str
+    dictation_text: str = Field(min_length=3, max_length=8000)
+
+
+class AITimelineSummaryRequest(BaseModel):
+    patient_id: str
+
+
+class AIDraftAcceptRequest(BaseModel):
+    clinician_edited_content: str = Field(min_length=5, max_length=10000)

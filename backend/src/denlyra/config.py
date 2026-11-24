@@ -14,6 +14,7 @@ class Settings:
     auth_secret: str = "denlyra-synthetic-demo-hmac-secret-do-not-use-in-prod"
     archive_dir: str = "./local_data/archive"
     archive_master_secret: str = "denlyra-synthetic-demo-master-kek-do-not-use-in-prod"
+    ai_assist_enabled: bool = True
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -29,6 +30,7 @@ class Settings:
             archive_master_secret=os.getenv(
                 "DENLYRA_ARCHIVE_MASTER_SECRET", cls.archive_master_secret
             ),
+            ai_assist_enabled=os.getenv("DENLYRA_AI_ASSIST_ENABLED", "1") != "0",
         )
 
     def validate(self) -> None:

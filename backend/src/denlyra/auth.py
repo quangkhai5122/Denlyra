@@ -102,6 +102,20 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
     "archive.write": {"clinic_owner", "medical_director", "dentist"},
     "archive.key_manage": {"clinic_owner", "medical_director"},
     "archive.restore": {"clinic_owner", "medical_director"},
+    "inventory.read": {
+        "clinic_owner", "medical_director", "dentist", "assistant",
+        "treatment_coordinator", "finance",
+    },
+    "inventory.write": {"clinic_owner", "medical_director", "dentist", "treatment_coordinator"},
+    "inventory.consume": {"clinic_owner", "medical_director", "dentist", "assistant"},
+    "inventory.adjust_request": {
+        "clinic_owner", "medical_director", "dentist", "treatment_coordinator",
+    },
+    "inventory.adjust_approve": {"clinic_owner", "medical_director"},
+    "interop.fhir_read": {"clinic_owner", "medical_director", "dentist"},
+    "ai.draft": {"clinic_owner", "medical_director", "dentist", "treatment_coordinator"},
+    "ai.accept_clinical": {"medical_director", "dentist"},
+    "ai.evaluate": {"clinic_owner", "medical_director", "dentist"},
     "signed_url.create": {"clinic_owner", "medical_director", "dentist"},
     "signed_url.consume": {"clinic_owner", "medical_director", "dentist"},
 }

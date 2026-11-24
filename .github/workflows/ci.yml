@@ -24,6 +24,8 @@ jobs:
         run: python scripts/smoke_baseline.py
       - name: Run isolated encrypted DR restore drill
         run: python scripts/run_dr_restore_drill.py
+      - name: Run offline AI safety and prompt-injection benchmark
+        run: python scripts/run_ai_eval_harness.py
       - name: Verify generated OpenAPI TypeScript client
         run: python scripts/generate_openapi_ts.py --check
       - name: Syntax-check backend
@@ -33,7 +35,7 @@ jobs:
       - name: Lint Python
         run: python -m ruff check backend/src backend/tests
       - name: Lint baseline utilities
-        run: python -m ruff check --config backend/pyproject.toml scripts/smoke_baseline.py scripts/update_manifest.py scripts/verify_artifact.py scripts/verify_postgres_live.py scripts/run_dr_restore_drill.py scripts/generate_openapi_ts.py
+        run: python -m ruff check --config backend/pyproject.toml scripts/smoke_baseline.py scripts/update_manifest.py scripts/verify_artifact.py scripts/verify_postgres_live.py scripts/run_dr_restore_drill.py scripts/run_ai_eval_harness.py scripts/generate_openapi_ts.py
       - name: Verify capability safety labels
         run: python scripts/verify_artifact.py
       - name: Verify source manifest

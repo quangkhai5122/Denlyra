@@ -269,12 +269,16 @@ IMPLEMENTED = {
     "SCH-013", "EMR-001", "EMR-002", "EMR-004", "EMR-005", "EMR-006", "EMR-007", "EMR-008",
     "EMR-012", "EMR-015", "EMR-017", "TRT-001", "TRT-002", "TRT-003", "TRT-005", "TRT-006",
     "TRT-007", "TRT-008", "TRT-009", "TRT-010", "TRT-011", "TRT-013", "LAB-001", "LAB-002",
-    "LAB-003", "LAB-004", "LAB-005", "LAB-006", "LAB-007", "LAB-008", "LAB-009", "ODN-001",
-    "ODN-002", "ODN-003", "ODN-004", "FIN-002", "FIN-003", "FIN-004", "FIN-005", "FIN-006",
-    "FIN-007", "FIN-010", "FIN-011", "RPT-001", "INT-001", "INT-005", "INT-011", "MIG-001",
-    "MIG-002", "MIG-003", "MIG-004", "MIG-005", "MIG-006", "MIG-007", "MIG-008", "SEC-001",
-    "SEC-002", "SEC-004", "SEC-006", "SEC-008", "SEC-010", "SEC-011", "OPS-001", "OPS-002",
-    "OPS-004", "OPS-006", "OPS-007",
+    "LAB-003", "LAB-004", "LAB-005", "LAB-006", "LAB-007", "LAB-008", "LAB-009",
+    "INV-001", "INV-002", "INV-003", "INV-004", "INV-005", "INV-006", "INV-007", "INV-008",
+    "INV-009", "INV-010",
+    "ODN-001", "ODN-002", "ODN-003", "ODN-004", "FIN-002", "FIN-003", "FIN-004", "FIN-005",
+    "FIN-006", "FIN-007", "FIN-010", "FIN-011", "RPT-001", "RPT-008",
+    "AI-002", "AI-003", "AI-004", "AI-009", "AI-010", "AI-011", "AI-014",
+    "INT-001", "INT-002", "INT-003", "INT-005", "INT-011",
+    "MIG-001", "MIG-002", "MIG-003", "MIG-004", "MIG-005", "MIG-006", "MIG-007", "MIG-008",
+    "SEC-001", "SEC-002", "SEC-004", "SEC-006", "SEC-008", "SEC-010", "SEC-011",
+    "OPS-001", "OPS-002", "OPS-004", "OPS-006", "OPS-007",
 }
 # The codes marked "D" represent synthetic demo behavior ONLY, not production implementations.
 
