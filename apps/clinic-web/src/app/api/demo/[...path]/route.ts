@@ -24,7 +24,18 @@ async function forward(req: NextRequest, ctx: Ctx): Promise<Response> {
   if (secFetchSite) headers["Sec-Fetch-Site"] = secFetchSite;
   const origin = req.headers.get("origin");
   if (origin) {
-    headers["Origin"] = origin === req.nextUrl.origin ? parsed.origin : origin;
+    const reqHost = req.headers.get("x-forwarded-host") ?? req.headers.get("host");
+    const hostOrigin = reqHost ? `http://${reqHost}` : "";
+    let isLoopbackSameOrigin = false;
+    try {
+      const originHost = new URL(origin).hostname;
+      isLoopbackSameOrigin =
+        ["127.0.0.1", "localhost"].includes(originHost) &&
+        (origin === req.nextUrl.origin || origin === hostOrigin);
+    } catch {
+      isLoopbackSameOrigin = false;
+    }
+    headers["Origin"] = isLoopbackSameOrigin ? parsed.origin : origin;
   }
   headers["X-Demo-Actor"] = "nextjs-prototype-user";
   if (!["GET", "HEAD"].includes(req.method)) headers["Content-Type"] = "application/json";

@@ -127,4 +127,11 @@ test("Security & Accessibility: FDI Odontogram SVG keyboard support, ARIA roles,
   assert.match(pageSrc, /role="alert"/);
   assert.match(pageSrc, /SYNTHETIC DEMO ONLY/);
   assert.match(pageSrc, /synthetic_signed_NOT_legal/);
+
+  const proxySrc = fs.readFileSync(
+    path.join(SRC_DIR, "app", "api", "demo", "[...path]", "route.ts"),
+    "utf-8",
+  );
+  assert.match(proxySrc, /isLoopbackSameOrigin/);
+  assert.match(proxySrc, /export \{ forward as GET, forward as POST, forward as PUT, forward as DELETE \}/);
 });
