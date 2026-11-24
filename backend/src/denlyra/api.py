@@ -24,9 +24,11 @@ from . import (
     audit_chain,
     auth,
     fhir_interop,
+    governance_analytics,
     inventory,
     models as m,
     operations,
+    patient_portal,
     services as svc,
 )
 from .config import Settings
@@ -42,6 +44,8 @@ from .schemas import (
     ArchiveLegalHoldRequest,
     ArchiveObjectCreate,
     BackupCreateRequest,
+    BreakGlassCreateRequest,
+    BreakGlassReviewRequest,
     CashierReconciliationCreate,
     ChairTurnoverCompleteRequest,
     ChairTurnoverCreate,
@@ -51,6 +55,8 @@ from .schemas import (
     ConsentCreate,
     ConsentWithdrawRequest,
     DentalFindingCreate,
+    DiscountDecisionRequest,
+    DiscountRequestCreate,
     DocumentAddendumCreate,
     DocumentEnterInErrorRequest,
     DocumentSnapshotCreate,
@@ -58,6 +64,7 @@ from .schemas import (
     EncounterCreate,
     EstimateAcceptRequest,
     EstimateCreate,
+    EstimateFromCatalogCreate,
     FhirBundleValidateRequest,
     FormOfficialExportRequest,
     FormTemplateCreate,
@@ -75,9 +82,19 @@ from .schemas import (
     PaperItemCreate,
     PaperItemVerifyLinkRequest,
     PatientCreate,
+    PatientMergeConfirmRequest,
+    PatientMergeCreate,
+    PatientMergeReverseRequest,
     PaymentCreate,
     PlanCreate,
     PlanReassessmentCreate,
+    PortalGrantCreate,
+    PortalInstructionPublish,
+    PortalIntakeCreate,
+    PortalPlanSummaryPublish,
+    PortalRescheduleCreate,
+    PortalRescheduleDecisionRequest,
+    PriceCatalogCreate,
     PurchaseOrderCreate,
     PurchaseOrderReceiveRequest,
     RecallCloseRequest,
@@ -264,6 +281,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "clinical_e_signature": False,
             "emr_certified": False,
             "patient_portal": False,
+            "synthetic_patient_portal_foundation": True,
             "production_auth": False,
             "synthetic_auth_foundation": True,
             "synthetic_signature_test_double": True,
@@ -393,10 +411,65 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         db, clinic_id, _ = context
         return audit_chain.paginate_patients(db, clinic_id, cfg.auth_secret, q, limit, cursor)
 
+    @app.get("/api/v1/patients/merges")
+    def list_patient_merges(context=Depends(require_perm("patient.read"))):
+        db, clinic_id, _ = context
+        rows = db.scalars(
+            select(m.PatientMergeRequest)
+            .where(m.PatientMergeRequest.clinic_id == clinic_id)
+            .order_by(m.PatientMergeRequest.created_at.desc())
+        ).all()
+        return [doc(r) for r in rows]
+
+    @app.post("/api/v1/patients/merges", status_code=201)
+    def request_patient_merge(
+        payload: PatientMergeCreate,
+        ctx_tuple=Depends(require_principal_perm("patient.merge_request")),
+    ):
+        db, clinic_id, actor, principal = ctx_tuple
+        return doc(
+            patient_portal.create_patient_merge_request(
+                db, clinic_id, principal.staff_id, actor, payload
+            )
+        )
+
+    @app.post("/api/v1/patients/merges/{merge_id}/confirm")
+    def confirm_patient_merge(
+        merge_id: str,
+        payload: PatientMergeConfirmRequest,
+        ctx_tuple=Depends(require_principal_perm("patient.merge_approve")),
+    ):
+        db, clinic_id, actor, principal = ctx_tuple
+        return doc(
+            patient_portal.confirm_patient_merge_request(
+                db, clinic_id, merge_id, principal.staff_id, actor, payload
+            )
+        )
+
+    @app.post("/api/v1/patients/merges/{merge_id}/reverse")
+    def reverse_patient_merge(
+        merge_id: str,
+        payload: PatientMergeReverseRequest,
+        ctx_tuple=Depends(require_principal_perm("patient.merge_approve")),
+    ):
+        db, clinic_id, actor, principal = ctx_tuple
+        return doc(
+            patient_portal.reverse_patient_merge_request(
+                db, clinic_id, merge_id, principal.staff_id, actor, payload
+            )
+        )
+
     @app.get("/api/v1/patients/{patient_id}")
     def get_patient(patient_id: str, context=Depends(require_perm("patient.read"))):
         db, clinic_id, _ = context
         return doc(svc.ensure(db, m.Patient, patient_id, clinic_id))
+
+    @app.get("/api/v1/patients/{patient_id}/unified-summary")
+    def get_patient_unified_summary(
+        patient_id: str, context=Depends(require_perm("patient.read", audit_read=True))
+    ):
+        db, clinic_id, _ = context
+        return patient_portal.get_patient_unified_summary(db, clinic_id, patient_id)
 
     @app.post("/api/v1/consents", status_code=201)
     def create_consent(payload: ConsentCreate, context=Depends(require_perm("consent.write"))):
@@ -508,6 +581,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     ):
         db, clinic_id, actor = context
         svc.ensure(db, m.Patient, payload.patient_id, clinic_id)
+        svc._assert_not_merged_secondary(db, clinic_id, payload.patient_id)
         svc.doctor(db, payload.practitioner_id, clinic_id)
         item = m.Encounter(
             clinic_id=clinic_id,
@@ -1524,6 +1598,238 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     ):
         db, clinic_id, actor = context
         return doc(operations.close_recall_item(db, clinic_id, recall_id, payload, actor))
+
+    @app.get("/api/v1/auth/break-glass")
+    def list_break_glass_grants(context=Depends(require_perm("audit.read"))):
+        db, clinic_id, _ = context
+        rows = db.scalars(
+            select(m.BreakGlassGrant)
+            .where(m.BreakGlassGrant.clinic_id == clinic_id)
+            .order_by(m.BreakGlassGrant.created_at.desc())
+        ).all()
+        return [doc(r) for r in rows]
+
+    @app.post("/api/v1/auth/break-glass", status_code=201)
+    def activate_break_glass(
+        payload: BreakGlassCreateRequest,
+        ctx_tuple=Depends(require_principal_perm("auth.break_glass")),
+    ):
+        db, _, _, principal = ctx_tuple
+        if not principal.authenticated:
+            raise HTTPException(401, "Authenticated staff token required for break-glass")
+        return doc(patient_portal.create_break_glass_grant(db, principal, payload))
+
+    @app.get("/api/v1/auth/break-glass/{grant_id}/patient-chart")
+    def read_break_glass_patient_chart(grant_id: str, ctx_tuple=Depends(resolve_ctx)):
+        db, _, _, principal = ctx_tuple
+        if not principal.authenticated:
+            raise HTTPException(401, "Authenticated staff token required for break-glass read")
+        return patient_portal.read_break_glass_chart(db, principal, grant_id)
+
+    @app.post("/api/v1/auth/break-glass/{grant_id}/revoke")
+    def revoke_break_glass(
+        grant_id: str, context=Depends(require_perm("staff.manage"))
+    ):
+        db, clinic_id, actor = context
+        return doc(patient_portal.revoke_break_glass_grant(db, clinic_id, grant_id, actor))
+
+    @app.post("/api/v1/auth/break-glass/{grant_id}/review")
+    def review_break_glass(
+        grant_id: str,
+        payload: BreakGlassReviewRequest,
+        ctx_tuple=Depends(require_principal_perm("staff.manage")),
+    ):
+        db, clinic_id, actor, principal = ctx_tuple
+        return doc(
+            patient_portal.review_break_glass_grant(
+                db, clinic_id, grant_id, principal.staff_id, actor, payload
+            )
+        )
+
+    @app.post("/api/v1/portal/grants", status_code=201)
+    def create_portal_grant(
+        payload: PortalGrantCreate,
+        ctx_tuple=Depends(require_principal_perm("portal.manage")),
+    ):
+        db, clinic_id, actor, principal = ctx_tuple
+        return patient_portal.issue_portal_session_grant(
+            db, clinic_id, principal.staff_id, actor, cfg.auth_secret, payload
+        )
+
+    @app.post("/api/v1/portal/instructions", status_code=201)
+    def publish_instruction(
+        payload: PortalInstructionPublish,
+        ctx_tuple=Depends(require_principal_perm("portal.publish")),
+    ):
+        db, clinic_id, actor, principal = ctx_tuple
+        return doc(
+            patient_portal.publish_portal_instruction(
+                db, clinic_id, principal.staff_id, actor, payload
+            )
+        )
+
+    @app.post("/api/v1/portal/plan-summaries", status_code=201)
+    def publish_plan_summary(
+        payload: PortalPlanSummaryPublish,
+        ctx_tuple=Depends(require_principal_perm("portal.publish")),
+    ):
+        db, clinic_id, actor, principal = ctx_tuple
+        return doc(
+            patient_portal.publish_portal_plan_summary(
+                db, clinic_id, principal.staff_id, actor, payload
+            )
+        )
+
+    @app.get("/api/v1/portal/reschedule-requests")
+    def list_portal_reschedule_requests(context=Depends(require_perm("appointment.read"))):
+        db, clinic_id, _ = context
+        rows = db.scalars(
+            select(m.PortalRescheduleRequest)
+            .where(m.PortalRescheduleRequest.clinic_id == clinic_id)
+            .order_by(m.PortalRescheduleRequest.created_at.desc())
+        ).all()
+        return [doc(r) for r in rows]
+
+    @app.post("/api/v1/portal/reschedule-requests/{request_id}/approve")
+    def approve_portal_reschedule(
+        request_id: str,
+        payload: PortalRescheduleDecisionRequest,
+        ctx_tuple=Depends(require_principal_perm("appointment.write")),
+    ):
+        db, clinic_id, actor, principal = ctx_tuple
+        return doc(
+            patient_portal.approve_portal_reschedule_request(
+                db, clinic_id, request_id, principal.staff_id, actor, payload
+            )
+        )
+
+    @app.get("/api/v1/patient-portal/overview")
+    def patient_portal_overview(
+        db: Session = Depends(get_db),
+        authorization: str | None = Header(None),
+    ):
+        portal = patient_portal.resolve_portal_principal(db, authorization, cfg.auth_secret)
+        return patient_portal.get_patient_portal_overview(db, portal)
+
+    @app.post("/api/v1/patient-portal/appointments/{appointment_id}/confirm", status_code=201)
+    def patient_portal_confirm_appointment(
+        appointment_id: str,
+        db: Session = Depends(get_db),
+        authorization: str | None = Header(None),
+    ):
+        portal = patient_portal.resolve_portal_principal(db, authorization, cfg.auth_secret)
+        return doc(patient_portal.confirm_portal_appointment(db, portal, appointment_id))
+
+    @app.post(
+        "/api/v1/patient-portal/appointments/{appointment_id}/reschedule-requests",
+        status_code=201,
+    )
+    def patient_portal_request_reschedule(
+        appointment_id: str,
+        payload: PortalRescheduleCreate,
+        db: Session = Depends(get_db),
+        authorization: str | None = Header(None),
+    ):
+        portal = patient_portal.resolve_portal_principal(db, authorization, cfg.auth_secret)
+        return doc(
+            patient_portal.create_portal_reschedule_request(
+                db, portal, appointment_id, payload
+            )
+        )
+
+    @app.post("/api/v1/patient-portal/intake-forms", status_code=201)
+    def patient_portal_submit_intake(
+        payload: PortalIntakeCreate,
+        db: Session = Depends(get_db),
+        authorization: str | None = Header(None),
+    ):
+        portal = patient_portal.resolve_portal_principal(db, authorization, cfg.auth_secret)
+        return doc(patient_portal.submit_portal_intake_form(db, portal, payload))
+
+    @app.get("/api/v1/finance/price-catalog")
+    def list_price_catalog(context=Depends(require_perm("finance.read"))):
+        db, clinic_id, _ = context
+        rows = db.scalars(
+            select(m.ServicePriceCatalogItem)
+            .where(m.ServicePriceCatalogItem.clinic_id == clinic_id)
+            .order_by(
+                m.ServicePriceCatalogItem.service_code.asc(),
+                m.ServicePriceCatalogItem.version_number.desc(),
+            )
+        ).all()
+        return [doc(r) for r in rows]
+
+    @app.post("/api/v1/finance/price-catalog", status_code=201)
+    def publish_price_catalog_item(
+        payload: PriceCatalogCreate,
+        context=Depends(require_perm("finance.catalog_manage")),
+    ):
+        db, clinic_id, actor = context
+        return doc(
+            governance_analytics.publish_price_catalog_version(db, clinic_id, actor, payload)
+        )
+
+    @app.post("/api/v1/finance/estimates/from-catalog", status_code=201)
+    def create_estimate_from_catalog_endpoint(
+        payload: EstimateFromCatalogCreate,
+        context=Depends(require_perm("finance.write")),
+    ):
+        db, clinic_id, actor = context
+        return governance_analytics.create_estimate_from_catalog(
+            db, clinic_id, actor, payload
+        )
+
+    @app.get("/api/v1/finance/estimates/{estimate_id}/lines")
+    def get_estimate_lines_endpoint(
+        estimate_id: str, context=Depends(require_perm("finance.read"))
+    ):
+        db, clinic_id, _ = context
+        return governance_analytics.get_estimate_with_lines(db, clinic_id, estimate_id)
+
+    @app.get("/api/v1/finance/discount-requests")
+    def list_discount_requests(context=Depends(require_perm("finance.read"))):
+        db, clinic_id, _ = context
+        rows = db.scalars(
+            select(m.DiscountApprovalRequest)
+            .where(m.DiscountApprovalRequest.clinic_id == clinic_id)
+            .order_by(m.DiscountApprovalRequest.created_at.desc())
+        ).all()
+        return [doc(r) for r in rows]
+
+    @app.post("/api/v1/finance/estimates/{estimate_id}/discounts", status_code=201)
+    def request_discount_endpoint(
+        estimate_id: str,
+        payload: DiscountRequestCreate,
+        ctx_tuple=Depends(require_principal_perm("finance.write")),
+    ):
+        db, clinic_id, actor, principal = ctx_tuple
+        return doc(
+            governance_analytics.request_estimate_discount(
+                db, clinic_id, estimate_id, principal.staff_id, actor, payload
+            )
+        )
+
+    @app.post("/api/v1/finance/discount-requests/{request_id}/decide")
+    def decide_discount_endpoint(
+        request_id: str,
+        payload: DiscountDecisionRequest,
+        ctx_tuple=Depends(require_principal_perm("finance.discount_approve")),
+    ):
+        db, clinic_id, actor, principal = ctx_tuple
+        return doc(
+            governance_analytics.decide_discount_request(
+                db, clinic_id, request_id, principal.staff_id, actor, payload
+            )
+        )
+
+    @app.get("/api/v1/reports/dictionary")
+    def get_kpi_dictionary(context=Depends(require_perm("dashboard.read"))):
+        return governance_analytics.get_metric_dictionary()
+
+    @app.get("/api/v1/reports/kpi-lineage")
+    def get_kpi_lineage(context=Depends(require_perm("dashboard.read"))):
+        db, clinic_id, _ = context
+        return governance_analytics.compute_kpi_lineage_report(db, clinic_id)
 
     @app.get("/api/v1/audit-events/page")
     def list_audit_events_paginated(

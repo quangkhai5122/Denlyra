@@ -69,6 +69,17 @@ export interface BackupCreateRequest {
   object_store_lag_seconds?: number;
 }
 
+export interface BreakGlassCreateRequest {
+  patient_id: string;
+  emergency_reason: string;
+  ttl_seconds?: number;
+}
+
+export interface BreakGlassReviewRequest {
+  outcome: "reviewed_justified" | "reviewed_violation";
+  review_notes: string;
+}
+
 export interface CashierReconciliationCreate {
   counted_cash_vnd: number;
   counted_transfer_vnd: number;
@@ -128,6 +139,16 @@ export interface DentalFindingCreate {
   finding_text_demo: string;
 }
 
+export interface DiscountDecisionRequest {
+  approve: boolean;
+  decision_note: string;
+}
+
+export interface DiscountRequestCreate {
+  discount_amount_vnd: number;
+  reason: string;
+}
+
 export interface DocumentAddendumCreate {
   content: string;
   amendment_reason: string;
@@ -158,12 +179,23 @@ export interface EstimateAcceptRequest {
   accepted_by: string;
 }
 
+export interface EstimateCatalogLineInput {
+  catalog_item_id: string;
+  quantity?: number;
+}
+
 export interface EstimateCreate {
   patient_id: string;
   plan_id: string;
   version_number: number;
   amount_vnd: number;
   items_summary: string;
+}
+
+export interface EstimateFromCatalogCreate {
+  patient_id: string;
+  plan_id: string;
+  lines: EstimateCatalogLineInput[];
 }
 
 export interface FhirBundleValidateRequest {
@@ -280,6 +312,21 @@ export interface PatientCreate {
   phone_demo?: string | null;
 }
 
+export interface PatientMergeConfirmRequest {
+  confirmation_note: string;
+}
+
+export interface PatientMergeCreate {
+  primary_patient_id: string;
+  secondary_patient_id: string;
+  rationale: string;
+  contradictions_noted?: string;
+}
+
+export interface PatientMergeReverseRequest {
+  reversal_reason: string;
+}
+
 export interface PaymentCreate {
   patient_id: string;
   amount_vnd: number;
@@ -299,6 +346,50 @@ export interface PlanReassessmentCreate {
   followup_task_title: string;
   followup_phase?: string;
   owner_role?: "dentist" | "medical_director" | "assistant" | "treatment_coordinator";
+}
+
+export interface PortalGrantCreate {
+  patient_id: string;
+  actor_kind?: "self" | "guardian";
+  actor_display_name: string;
+  ttl_seconds?: number;
+}
+
+export interface PortalInstructionPublish {
+  patient_id: string;
+  encounter_id?: string | null;
+  title_vi: string;
+  body_vi: string;
+}
+
+export interface PortalIntakeCreate {
+  form_code: string;
+  form_version: string;
+  answers?: Record<string, unknown>;
+}
+
+export interface PortalPlanSummaryPublish {
+  patient_id: string;
+  plan_id: string;
+  lay_summary_vi: string;
+}
+
+export interface PortalRescheduleCreate {
+  requested_start_at: string;
+  requested_end_at: string;
+  reason: string;
+}
+
+export interface PortalRescheduleDecisionRequest {
+  resolution_note: string;
+}
+
+export interface PriceCatalogCreate {
+  service_code: string;
+  name_vi: string;
+  category: string;
+  unit_price_vnd: number;
+  max_auto_discount_pct?: number;
 }
 
 export interface PurchaseOrderCreate {
@@ -485,6 +576,11 @@ export const OPENAPI_OPERATIONS = [
   "GET /api/v1/audit-events",
   "GET /api/v1/audit-events/page",
   "GET /api/v1/audit-events/verify-chain",
+  "GET /api/v1/auth/break-glass",
+  "POST /api/v1/auth/break-glass",
+  "GET /api/v1/auth/break-glass/{grant_id}/patient-chart",
+  "POST /api/v1/auth/break-glass/{grant_id}/review",
+  "POST /api/v1/auth/break-glass/{grant_id}/revoke",
   "POST /api/v1/auth/revoke",
   "POST /api/v1/auth/signed-urls",
   "POST /api/v1/auth/token",
@@ -514,12 +610,19 @@ export const OPENAPI_OPERATIONS = [
   "POST /api/v1/finance/allocations",
   "GET /api/v1/finance/charges",
   "POST /api/v1/finance/charges",
+  "GET /api/v1/finance/discount-requests",
+  "POST /api/v1/finance/discount-requests/{request_id}/decide",
   "GET /api/v1/finance/estimates",
   "POST /api/v1/finance/estimates",
+  "POST /api/v1/finance/estimates/from-catalog",
   "POST /api/v1/finance/estimates/{estimate_id}/accept",
+  "POST /api/v1/finance/estimates/{estimate_id}/discounts",
+  "GET /api/v1/finance/estimates/{estimate_id}/lines",
   "GET /api/v1/finance/payments",
   "POST /api/v1/finance/payments",
   "POST /api/v1/finance/payments/{payment_id}/refunds",
+  "GET /api/v1/finance/price-catalog",
+  "POST /api/v1/finance/price-catalog",
   "GET /api/v1/finance/reconciliations",
   "POST /api/v1/finance/reconciliations",
   "GET /api/v1/interop/fhir/r4/patients/{patient_id}/bundle",
@@ -568,13 +671,29 @@ export const OPENAPI_OPERATIONS = [
   "GET /api/v1/operations/turnovers",
   "POST /api/v1/operations/turnovers",
   "POST /api/v1/operations/turnovers/{checklist_id}/complete",
+  "POST /api/v1/patient-portal/appointments/{appointment_id}/confirm",
+  "POST /api/v1/patient-portal/appointments/{appointment_id}/reschedule-requests",
+  "POST /api/v1/patient-portal/intake-forms",
+  "GET /api/v1/patient-portal/overview",
   "GET /api/v1/patients",
   "POST /api/v1/patients",
+  "GET /api/v1/patients/merges",
+  "POST /api/v1/patients/merges",
+  "POST /api/v1/patients/merges/{merge_id}/confirm",
+  "POST /api/v1/patients/merges/{merge_id}/reverse",
   "GET /api/v1/patients/page",
   "GET /api/v1/patients/{patient_id}",
   "GET /api/v1/patients/{patient_id}/consents",
   "GET /api/v1/patients/{patient_id}/odontogram",
   "GET /api/v1/patients/{patient_id}/revenue-account",
+  "GET /api/v1/patients/{patient_id}/unified-summary",
+  "POST /api/v1/portal/grants",
+  "POST /api/v1/portal/instructions",
+  "POST /api/v1/portal/plan-summaries",
+  "GET /api/v1/portal/reschedule-requests",
+  "POST /api/v1/portal/reschedule-requests/{request_id}/approve",
+  "GET /api/v1/reports/dictionary",
+  "GET /api/v1/reports/kpi-lineage",
   "POST /api/v1/resources",
   "GET /api/v1/signed-download/{grant_token}",
   "POST /api/v1/staff",
@@ -952,5 +1071,17 @@ export class DenlyraApiClient {
   }
   listAuditEvents() {
     return this.request<Array<{ id: string; chain_seq: number; entry_hash: string; actor_demo: string; action: string; subject_type: string; subject_id: string; created_at: string }>>("GET", "audit-events");
+  }
+  publishPriceCatalogItem(payload: PriceCatalogCreate) {
+    return this.request<{ id: string; service_code: string; version_number: number; unit_price_vnd: number; status: string }>("POST", "finance/price-catalog", payload);
+  }
+  getKpiLineage() {
+    return this.request<{ clinic_id: string; refreshed_at: string; metrics: Array<{ metric_code: string; title_vi: string; formula_expression: string; review_owner_role: string; values: Record<string, number>; source_record_ids: string[] }> }>("GET", "reports/kpi-lineage");
+  }
+  requestPatientMerge(payload: PatientMergeCreate) {
+    return this.request<{ id: string; status: string }>("POST", "patients/merges", payload);
+  }
+  activateBreakGlass(payload: BreakGlassCreateRequest) {
+    return this.request<{ id: string; status: string; review_status: string; expires_at: string }>("POST", "auth/break-glass", payload);
   }
 }

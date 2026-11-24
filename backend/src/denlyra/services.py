@@ -80,6 +80,22 @@ def ensure(db: Session, cls, item_id: str, clinic_id: str | None = None):
     return obj
 
 
+def _assert_not_merged_secondary(db: Session, clinic_id: str, patient_id: str) -> None:
+    merged = db.scalar(
+        select(m.PatientMergeRequest).where(
+            m.PatientMergeRequest.clinic_id == clinic_id,
+            m.PatientMergeRequest.secondary_patient_id == patient_id,
+            m.PatientMergeRequest.status == "merged",
+        )
+    )
+    if merged is not None:
+        raise HTTPException(
+            409,
+            f"Patient '{patient_id}' is merged into canonical patient "
+            f"'{merged.primary_patient_id}'; book or chart against canonical ID (PAT-006)",
+        )
+
+
 def doctor(db: Session, doctor_id: str, clinic_id: str) -> m.Staff:
     s = ensure(db, m.Staff, doctor_id, clinic_id)
     if s.role not in {"dentist", "medical_director"} or not s.active:
@@ -300,6 +316,7 @@ def schedule(
             )
 
     ensure(db, m.Patient, data.patient_id, clinic_id)
+    _assert_not_merged_secondary(db, clinic_id, data.patient_id)
     doctor(db, data.practitioner_id, clinic_id)
     chair(db, data.chair_id, clinic_id)
     unique_eq = sorted(set(data.equipment_ids))

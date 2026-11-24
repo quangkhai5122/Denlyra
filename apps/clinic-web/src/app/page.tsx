@@ -1957,6 +1957,46 @@ export default function ClinicWorkspacePage() {
                 </span>
               </div>
             ))}
+
+            <h3>4. Từ điển KPI Có Truy Vết Nguồn &amp; Bảng giá Phiên bản (T016 · RPT-002..011 / FIN-001)</h3>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={async () => {
+                  setConflictMsg("");
+                  const r = await client.getKpiLineage();
+                  if (!r.ok) return handleApiFailure(r.status, r.detail, r.conflict);
+                  const rpt2 = r.data.metrics.find((m) => m.metric_code === "RPT-002");
+                  const rpt6 = r.data.metrics.find((m) => m.metric_code === "RPT-006");
+                  setStatusMsg(
+                    `KPI Lineage (${r.data.metrics.length} chỉ số): Ghế đặt=${rpt2?.values.scheduled_chair_minutes ?? 0}p vs Thực ngồi=${rpt2?.values.utilized_chair_minutes ?? 0}p · Phát sinh=${formatVndInteger(rpt6?.values.billed_charges_vnd ?? 0)} vs Thực thu ròng=${formatVndInteger(rpt6?.values.net_collected_cash_vnd ?? 0)}.`,
+                  );
+                }}
+              >
+                Tính KPI Có Truy Vết (RPT-002..011)
+              </button>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={async () => {
+                  setConflictMsg("");
+                  const r = await client.publishPriceCatalogItem({
+                    service_code: "IMP-STD-01",
+                    name_vi: "Trụ Implant Titanium tiêu chuẩn",
+                    category: "implant",
+                    unit_price_vnd: 20000000,
+                    max_auto_discount_pct: 5,
+                  });
+                  if (!r.ok) return handleApiFailure(r.status, r.detail, r.conflict);
+                  setStatusMsg(
+                    `Đã phát hành Biểu giá ${r.data.service_code} phiên bản v${r.data.version_number} (${formatVndInteger(r.data.unit_price_vnd)} · không ghi đè báo giá cũ).`,
+                  );
+                }}
+              >
+                Phát hành Phiên bản Bảng giá IMP-STD-01 (v+1)
+              </button>
+            </div>
           </section>
         </div>
       )}

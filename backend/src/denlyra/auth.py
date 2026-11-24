@@ -131,6 +131,22 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         "clinic_owner", "medical_director", "dentist",
         "receptionist", "treatment_coordinator",
     },
+    "patient.merge_request": {
+        "clinic_owner", "medical_director", "dentist",
+        "receptionist", "treatment_coordinator",
+    },
+    "patient.merge_approve": {"clinic_owner", "medical_director", "dentist"},
+    "auth.break_glass": {
+        "clinic_owner", "medical_director", "dentist",
+        "assistant", "treatment_coordinator",
+    },
+    "portal.manage": {
+        "clinic_owner", "medical_director", "dentist",
+        "receptionist", "treatment_coordinator",
+    },
+    "portal.publish": {"medical_director", "dentist"},
+    "finance.catalog_manage": {"clinic_owner", "medical_director", "finance"},
+    "finance.discount_approve": {"clinic_owner", "medical_director"},
     "signed_url.create": {"clinic_owner", "medical_director", "dentist"},
     "signed_url.consume": {"clinic_owner", "medical_director", "dentist"},
 }
@@ -268,6 +284,8 @@ def issue_synthetic_staff_token(
 
 def resolve_principal_from_token(db: Session, token: str, secret: str) -> Principal:
     claims = decode_and_verify_token(token, secret)
+    if claims.get("aud") == "patient_portal":
+        raise HTTPException(401, "Portal token is not valid for staff endpoints")
     jti = str(claims.get("jti") or "")
     clinic_id = str(claims.get("clinic_id") or "")
     staff_id = str(claims.get("sub") or "")

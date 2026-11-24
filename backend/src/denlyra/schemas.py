@@ -1,7 +1,7 @@
 """Typed request schemas; strings and money are deliberately constrained."""
 from datetime import datetime
 from typing import Literal
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, StrictInt, model_validator
 
 
 class PatientCreate(BaseModel):
@@ -524,3 +524,102 @@ class RecallCreate(BaseModel):
 
 class RecallCloseRequest(BaseModel):
     closure_evidence: str = Field(min_length=3, max_length=300)
+
+
+class PatientMergeCreate(BaseModel):
+    primary_patient_id: str
+    secondary_patient_id: str
+    rationale: str = Field(min_length=5, max_length=300)
+    contradictions_noted: str = Field(default="", max_length=300)
+
+
+class PatientMergeConfirmRequest(BaseModel):
+    confirmation_note: str = Field(min_length=3, max_length=300)
+
+
+class PatientMergeReverseRequest(BaseModel):
+    reversal_reason: str = Field(min_length=5, max_length=300)
+
+
+class BreakGlassCreateRequest(BaseModel):
+    patient_id: str
+    emergency_reason: str = Field(min_length=15, max_length=300)
+    ttl_seconds: StrictInt = Field(default=300, ge=1, le=900)
+
+
+class BreakGlassReviewRequest(BaseModel):
+    outcome: Literal["reviewed_justified", "reviewed_violation"]
+    review_notes: str = Field(min_length=5, max_length=300)
+
+
+class PortalGrantCreate(BaseModel):
+    patient_id: str
+    actor_kind: Literal["self", "guardian"] = "self"
+    actor_display_name: str = Field(min_length=2, max_length=160)
+    ttl_seconds: StrictInt = Field(default=1800, ge=60, le=86400)
+
+
+class PortalInstructionPublish(BaseModel):
+    patient_id: str
+    encounter_id: str | None = None
+    title_vi: str = Field(min_length=3, max_length=180)
+    body_vi: str = Field(min_length=5, max_length=4000)
+
+
+class PortalPlanSummaryPublish(BaseModel):
+    patient_id: str
+    plan_id: str
+    lay_summary_vi: str = Field(min_length=5, max_length=4000)
+
+
+class PortalRescheduleCreate(BaseModel):
+    requested_start_at: datetime
+    requested_end_at: datetime
+    reason: str = Field(min_length=3, max_length=260)
+
+    @model_validator(mode="after")
+    def check_range(self):
+        if not self.requested_start_at.tzinfo or not self.requested_end_at.tzinfo:
+            raise ValueError("Provide timezone-aware RFC3339 timestamps")
+        if self.requested_end_at <= self.requested_start_at:
+            raise ValueError("requested_end_at must follow requested_start_at")
+        return self
+
+
+class PortalRescheduleDecisionRequest(BaseModel):
+    resolution_note: str = Field(min_length=3, max_length=260)
+
+
+class PortalIntakeCreate(BaseModel):
+    form_code: str = Field(min_length=3, max_length=60)
+    form_version: str = Field(min_length=1, max_length=30)
+    answers: dict = Field(default_factory=dict)
+
+
+class PriceCatalogCreate(BaseModel):
+    service_code: str = Field(min_length=2, max_length=60)
+    name_vi: str = Field(min_length=3, max_length=200)
+    category: str = Field(min_length=2, max_length=40)
+    unit_price_vnd: StrictInt = Field(gt=0)
+    max_auto_discount_pct: StrictInt = Field(default=5, ge=0, le=100)
+
+
+class EstimateCatalogLineInput(BaseModel):
+    catalog_item_id: str
+    quantity: StrictInt = Field(default=1, gt=0, le=100)
+
+
+class EstimateFromCatalogCreate(BaseModel):
+    patient_id: str
+    plan_id: str
+    lines: list[EstimateCatalogLineInput] = Field(min_length=1)
+
+
+class DiscountRequestCreate(BaseModel):
+    discount_amount_vnd: StrictInt = Field(gt=0)
+    reason: str = Field(min_length=5, max_length=300)
+
+
+class DiscountDecisionRequest(BaseModel):
+    approve: bool
+    decision_note: str = Field(min_length=3, max_length=300)
