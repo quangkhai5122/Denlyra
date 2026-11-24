@@ -11,11 +11,9 @@ _SESSION_BASETEMP: Path | None = None
 
 def pytest_configure(config):
     global _SESSION_BASETEMP
-    if not config.option.basetemp:
-        local = Path(__file__).resolve().parents[2] / "local_data"
-        local.mkdir(exist_ok=True)
-        _SESSION_BASETEMP = Path(tempfile.mkdtemp(prefix="pytest-run-", dir=local))
-        config.option.basetemp = str(_SESSION_BASETEMP / "tmp")
+    local = Path(__file__).resolve().parents[2] / "local_data"
+    local.mkdir(exist_ok=True)
+    _SESSION_BASETEMP = Path(tempfile.mkdtemp(prefix="pytest-run-", dir=local))
 
 
 def pytest_unconfigure(config):
@@ -26,8 +24,24 @@ def pytest_unconfigure(config):
 
 
 @pytest.fixture
+def tmp_path() -> Path:
+    """Sandbox-safe temporary directory without NTFS junctions (avoids WinError 448)."""
+    base = _SESSION_BASETEMP or (Path(__file__).resolve().parents[2] / "local_data")
+    base.mkdir(exist_ok=True)
+    d = Path(tempfile.mkdtemp(prefix="case-", dir=base))
+    try:
+        yield d
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+@pytest.fixture
 def client(tmp_path):
-    settings = Settings(demo_mode=True, db_url=f"sqlite+pysqlite:///{tmp_path / 'demo.db'}")
+    settings = Settings(
+        demo_mode=True,
+        db_url=f"sqlite+pysqlite:///{tmp_path / 'demo.db'}",
+        archive_dir=str(tmp_path / "archive"),
+    )
     app = create_app(settings)
     with TestClient(app, base_url="http://127.0.0.1:8766") as c:
         yield c

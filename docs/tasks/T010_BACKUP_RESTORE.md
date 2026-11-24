@@ -1,10 +1,14 @@
 # T010 — Encrypted record archive and disaster recovery
 Priority P0 before PHI · Owner: Security/Operations · Depends T001, T004
 
-**Status (2026-11-17):** Pending — implementation not started. See `docs/PROJECT_STATE.md` for current ordering.
+**Status (2026-11-24):** Completed (synthetic encrypted archive & isolated DR restore foundation; external Cloud KMS/HSM escrow and Circular 33/2025/TT-BYT legal retention sign-off remain gated before real PHI). See [ADR-010](../adr/ADR-010-encrypted-archive-dr-and-role-workspaces.md), [RETENTION_AND_DR_POLICY.md](../operations/RETENTION_AND_DR_POLICY.md), and [PROJECT_STATE.md](../PROJECT_STATE.md).
 
-## Work
-Design object storage, key management, versioned signed document/archive manifest, DICOM backups and PostgreSQL PITR. Build automatic restore drill to isolated environment and verify all record/media/signature references. Document retention policy (legal review) and incident runbooks. Test missing/altered object, wrong key, stale backup, unavailable signature evidence, tenant cross-restore.
+## Implemented in synthetic foundation
+- **Per-clinic envelope encryption & key lifecycle (`archive_dr.py`, `0005_archive_and_dr.py`):** `TenantEncryptionKey` wraps random 32-byte per-clinic DEKs under KEKs derived from `DENLYRA_ARCHIVE_MASTER_SECRET`; raw DEKs are never stored in DB or backups. `ArchiveObject` encrypts clinical attachments, DICOM study stubs, paper scans, and snapshot exports with authenticated Encrypt-then-MAC (`DLY1` envelope) bound to `(clinic_id, patient_id, object_id, key_version)`.
+- **Key rotation & revocation:** `POST /api/v1/archive/keys/rotate` retires `v1` to `retired_decrypt_only` (preserving historical read/restore verification without mutating sealed evidence) while issuing `v2` for new objects; `POST /api/v1/archive/keys/{id}/revoke` fails closed on verification and restore.
+- **Retention & legal hold deletion block (`INV-018`, `DR-08`):** Conservative 20-year provisional quarantine hold plus explicit `legal_hold` (`POST /api/v1/archive/objects/{id}/legal-hold`); `DELETE /api/v1/archive/objects/{id}` rejects physical deletion with `409 Conflict` and audits `archive.deletion_blocked_retention`.
+- **Signed backup manifest & isolated DR restore drill (`INV-024`, `NEG-13`, `DR-04`, `DR-05`):** `BackupManifest` + `RestoreDrillRun` (`POST /api/v1/archive/backups/{id}/restore-drill` and CLI `scripts/run_dr_restore_drill.py`) restore relational rows into an isolated SQLite DB and verify manifest HMAC/SHA-256, cross-store checkpoint freshness, object presence/decryption/hashes, key status, and `SignatureReceipt` validity on every sealed `ClinicalDocumentSnapshot`, measuring `rto_ms` and `rpo_lag_ms`.
+- **Negative test coverage (`backend/tests/test_backup_restore_dr.py`):** Verified missing object (`NEG-13`), bit-flipped ciphertext, wrong master key, revoked tenant key, stale object-store checkpoint (`DR-05`), tampered signature receipt (`DR-04`), cross-tenant restore (`403`/`404`), and receptionist RBAC denial (`403`).
 
-## Acceptance
-Restored archive intact, no silent missing files, RPO/RTO measured against realistic outage tests, legal/security owner sign-off, no PHI use before success.
+## Remaining before real PHI
+External Cloud KMS/HSM dual-custody key ring, live PostgreSQL `pgBackRest` WAL PITR + WORM object bucket in Vietnam-compliant region, and legal counsel sign-off on [RETENTION_AND_DR_POLICY.md](../operations/RETENTION_AND_DR_POLICY.md) / [NEEDS_CLINICAL_REVIEW.md](../clinical/NEEDS_CLINICAL_REVIEW.md).

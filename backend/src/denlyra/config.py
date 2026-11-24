@@ -12,6 +12,8 @@ class Settings:
     require_auth: bool = False
     auth_provider_available: bool = True
     auth_secret: str = "denlyra-synthetic-demo-hmac-secret-do-not-use-in-prod"
+    archive_dir: str = "./local_data/archive"
+    archive_master_secret: str = "denlyra-synthetic-demo-master-kek-do-not-use-in-prod"
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -23,6 +25,10 @@ class Settings:
             require_auth=os.getenv("DENLYRA_REQUIRE_AUTH", "0") == "1",
             auth_provider_available=os.getenv("DENLYRA_AUTH_PROVIDER_AVAILABLE", "1") != "0",
             auth_secret=os.getenv("DENLYRA_AUTH_SECRET", cls.auth_secret),
+            archive_dir=os.getenv("DENLYRA_ARCHIVE_DIR", cls.archive_dir),
+            archive_master_secret=os.getenv(
+                "DENLYRA_ARCHIVE_MASTER_SECRET", cls.archive_master_secret
+            ),
         )
 
     def validate(self) -> None:
@@ -35,3 +41,4 @@ class Settings:
             path = self.db_url.split("///", 1)[-1]
             if path and path != self.db_url:
                 Path(path).parent.mkdir(parents=True, exist_ok=True)
+        Path(self.archive_dir).mkdir(parents=True, exist_ok=True)

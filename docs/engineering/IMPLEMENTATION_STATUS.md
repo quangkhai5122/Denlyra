@@ -2,7 +2,7 @@
 
 ## Executed in starter
 - Synthetic demo UI: overview, clinics, patients, appointments, encounter draft, note version/demolock, plan/task version, FDI tooth-code event reference, lab status, finance charges/payment, audit event.
-- Python backend FastAPI+SQLAlchemy (36 tables, 78 OpenAPI operations). Demo SQLite automatically bootstrapped; clinic scoping on API reads; basic Host/Origin protections.
+- Python backend FastAPI+SQLAlchemy (40 tables, 93 OpenAPI operations). Demo SQLite automatically bootstrapped; clinic scoping on API reads; basic Host/Origin protections.
 - T001 synthetic token issuer (`HS256`), deny-by-default RBAC/ABAC policy engine, staff deactivation token invalidation, JTI revocation, one-time clinic-scoped signed URLs, and sensitive clinical read/denial audit trail (`ADR-007`).
 - T002 explicit frozen Alembic migration chain (`0001_demo` -> `0002_hardening` -> `0003_treatment_and_signing` -> `0004_lab_consent_finance_and_migration`), atomic multi-resource (doctor + chair + equipment) booking, `IntegrityError` -> `409` rollback, idempotency keys, SQLite overlap trigger, 2-connection barrier concurrency test harness, `scripts/verify_postgres_live.py`, and CI `postgres-concurrency-tests` job. Local live PostgreSQL server execution remains unverified on hosts without Docker/PostgreSQL.
 - T003 quarantined synthetic `FormRegistry` with immutable `(official_code, schema_version)`, tri-state (`present`/`explicit_negative`/`unknown`/`missing`) validation (`INV-022`), and fail-closed `409` blocks on self-approval and official EMR export (`docs/clinical/NEEDS_CLINICAL_REVIEW.md`).
@@ -11,16 +11,17 @@
 - T006 synthetic legacy paper quarantine importer (`MigrationBatch`, `MigrationItem`), page completeness blocks (`NEG-10`, `DR-01`), duplicate patient candidate queue (`PAT-005`, `DR-02`), `legacy_scan` provenance enforcement (`DR-03`), batch reconciliation, and batch rollback (`ADR-009`).
 - T007 purpose-separated `ConsentRecord` (`treatment`, `data_processing`, `marketing`, `financial`) with guardian authority check and isolated marketing withdrawal (`SEC-07`), lab delay alerts (`SCH-013`), delivery vs verification separation (`LAB-006`/`LAB-009`), remake lineage, and minimized-data scoped `LabPartnerGrant` portal (`ADR-009`).
 - T008 versioned `EstimateVersion` (`FIN-002`), append-only `LedgerEntry` journal, `idempotency_key` deduplication across charges/payments/allocations/refunds (`NEG-08`, `NEG-17`), DB allocation bounds trigger + concurrent barrier test, and daily `CashierReconciliation` (`FIN-010`, `ADR-009`).
-- Negative automated tests (48 passed, 1 skipped live-Postgres check), legal and domain reference docs, 222-ID feature catalog (72 partial demo flags).
+- T009 generated OpenAPI TypeScript client (`scripts/generate_openapi_ts.py` -> `apps/clinic-web/src/lib/generated-api.ts`, `INT-001`), 5 role-based Next.js 15.5.29 workspaces (`receptionist`, `dentist`, `treatment_coordinator`, `finance`, `clinic_owner`) using in-memory `HS256` Bearer sessions, pessimistic `409` conflict handling, fixed `Asia/Ho_Chi_Minh` timezone formatting (`R-011`), keyboard/touch accessible SVG FDI odontogram (`ODN-004`), and Node 24 contract/accessibility tests (`ADR-010`).
+- T010 per-clinic envelope encryption (`TenantEncryptionKey` wrapped DEK + `DLY1` Encrypt-then-MAC `ArchiveObject`), key rotation (`v1` -> `v2` `retired_decrypt_only`) and revocation, retention/legal-hold deletion block (`409`, `DR-08`), signed cross-store `BackupManifest`, and automated isolated DR restore drill (`RestoreDrillRun` + `scripts/run_dr_restore_drill.py`) measuring `RTO`/`RPO` (`ADR-010`).
+- Negative automated tests (53 passed, 1 skipped live-Postgres check in backend; 4 passed in `apps/clinic-web`), legal and domain reference docs, 222-ID feature catalog (83 partial demo flags).
 
 ## Designed only — not implemented
-- Real login, role authorizations, multi-clinic user identities, production clinic database routing.
-- EMR 16/BV-01 compliance, full tooth chart, clinical decision recording, legally valid e-signature and certified clinic archive.
-- Real encounter workflow, treatment consent, document forms, lab partner portal, inventory, refunds, invoicing, real payments.
-- Files, DICOM, imaging, FHIR interoperability, patient portal, external Zalo/SMS, authorized e-health integration.
-- Secure encryption, object manifests, backups/recovery, operations observability, incident response.
+- Real OIDC/MFA login, multi-clinic production user identities, production clinic database routing, external Cloud KMS/HSM key custody.
+- EMR 16/BV-01 compliance, clinical decision recording, legally valid e-signature and certified clinic archive.
+- Real inventory lot/stock movement ledger (`INV-001`..`INV-010`), e-invoicing, real payment gateways.
+- Real DICOM/OHIF server, FHIR R4 interoperability, patient portal, external Zalo/SMS, authorized e-health integration.
 - AI transcription, clinical drafts, retrieval, evaluation or predictive algorithms.
-- Full role-based React/Next.js frontend. A small optional patients/plans prototype exists in `apps/clinic-web`; typecheck/build passed on Windows 2026-11-17. The default UI remains static HTML/CSS/JS; browser E2E, authorization and accessibility remain unverified.
+- Provisioned Playwright multi-browser E2E against live OIDC/MFA (`SEC-G1`).
 
 ## Known limitations and technical debt
 Demo authorization is header spoofable; no encryption; audit not tamper-resistant; SQLite scheduling and finance are not concurrency-safe; no schema version upgrades tested; no rate-limiting or robust CSP testing; no production security monitoring; no real QA with a licensed dentist. Keep demo restricted to localhost and fake records.

@@ -16,17 +16,19 @@
 | M8 | Controlled clinical pilot | Approved production deployment, training, cutover, incident playbook | All launch gates signed by clinic and security/legal owners |
 | M9 | Repeatable business deployment | Billing, onboarding wizard, support, license, clinic cohort metrics | Paid pilot retention and measured value |
 
-## Current position (2026-11-18)
-R0 synthetic baseline verified by T000. On 2026-11-18:
+## Current position (2026-11-24)
+R0 synthetic baseline verified by T000. Through 2026-11-24, all initial ten coded foundation slices (`T001`–`T010`) have synthetic domain, API, migration, and negative-test implementations:
 - `T001` synthetic authentication, RBAC/ABAC deny-by-default, staff deactivation invalidation, token revocation, and single-use signed URL foundation completed (`ADR-007`).
-- `T002` frozen Alembic migration chain (`0001_demo` -> `0002_hardening`), atomic doctor+chair+equipment booking, `IntegrityError` -> `409` rollback, booking idempotency, and 2-connection barrier race test harness implemented; final live PostgreSQL verification awaits a running PostgreSQL test server (`DENLYRA_TEST_POSTGRES_URL`).
+- `T002` frozen Alembic migration chain (`0001_demo` -> `0005_archive_and_dr`), atomic doctor+chair+equipment booking, `IntegrityError` -> `409` rollback, booking idempotency, 2-connection barrier race test harness, `scripts/verify_postgres_live.py`, and CI `postgres-concurrency-tests` implemented; live PostgreSQL run receipt remains gated on a running PostgreSQL 16 host or remote CI log review.
 - `T003` safe synthetic `FormRegistry`, version immutability, and tri-state (`present`/`explicit_negative`/`unknown`/`missing`) validation implemented with `docs/clinical/NEEDS_CLINICAL_REVIEW.md` blocking clinical activation until named dentist and legal counsel sign-off.
 - `T004` synthetic `SignatureProvider` test double, canonical `ClinicalDocumentSnapshot` envelope, linked addenda, and `entered_in_error` negative/integrity suite completed (`ADR-008`); real legal signing remains blocked by `NEEDS_CLINICAL_REVIEW.md`.
 - `T005` multi-dependency treatment DAG, cycle detection, cross-context schedule/lab/charge coordination links, transactional outbox, atomic appointment reschedule, append-only refunds, reassessment version loops, and evidence-aware timeline completed (`ADR-008`).
 - `T006` synthetic legacy paper quarantine importer (`MigrationBatch`, `MigrationItem`, missing-page blocks, duplicate-candidate review queue, `legacy_scan` provenance, batch rollback) completed (`ADR-009`).
 - `T007` purpose-separated `ConsentRecord`, lab delay alerts, delivery vs verification separation, remake lineage, and minimized-data `LabPartnerGrant` portal completed (`ADR-009`).
 - `T008` versioned `EstimateVersion`, append-only `LedgerEntry`, idempotent charges/payments/allocations/refunds, concurrent allocation bounds, and daily `CashierReconciliation` completed (`ADR-009`).
-No production milestone is complete; M0 human discovery and M1 live PostgreSQL + independent security review remain pending. Start `T009` (role-based React/Next.js workspaces + typed OpenAPI client + Playwright E2E/a11y) and `T010` (encrypted archive manifest & isolated backup/restore drill) next. See `docs/PROJECT_STATE.md`.
+- `T009` generated OpenAPI TypeScript client (`INT-001`), 5 role-based Next.js clinic workspaces, fixed `Asia/Ho_Chi_Minh` timezone formatting (`R-011`), accessible SVG FDI odontogram (`ODN-004`), and Node 24 contract/a11y tests completed (`ADR-010`).
+- `T010` per-clinic envelope encryption, key rotation/revocation, retention/legal-hold deletion block (`DR-08`), signed cross-store `BackupManifest`, and isolated DR restore drill measuring `RTO`/`RPO` completed (`ADR-010`).
+No production milestone is complete; M0 human clinical/legal discovery, M1 live PostgreSQL receipt + external OIDC/KMS + independent `SEC-G1` review, and M5 append-only Inventory Lot ledger (`INV-001`..`INV-010` / `INV-023`) are the next ordered priorities. See `docs/PROJECT_STATE.md`.
 
 ## Next ten coded tasks
 `T001` identity & authorization; `T002` PostgreSQL migration / booking race test; `T003` real clinical form mapping (blocked human); `T004` authenticated signature state machine (blocked human); `T005` treatment E2E with full dependency/rollback; `T006` audited source paper importer; `T007` lab and consent; `T008` financial ledger and refund; `T009` role-based React frontend; `T010` backup/archive/manifests and restore.

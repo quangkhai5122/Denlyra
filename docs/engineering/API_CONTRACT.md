@@ -72,6 +72,19 @@ Base URL: `http://127.0.0.1:8766`, OpenAPI at `/api/docs`. **Start only after ex
 | POST `/api/v1/clinical-forms/templates/{id}/approve` | `clinical_form.write` | 409 blocked | Fails closed until external clinical/legal review (`NEEDS_CLINICAL_REVIEW.md`) |
 | POST `/api/v1/clinical-forms/validate-preview` | `clinical_form.read` | `FormValidatePreviewRequest` | Tri-state (`present`/`explicit_negative`/`unknown`/`missing`) validation preview |
 | POST `/api/v1/clinical-forms/official-export` | `clinical_form.write` | 409 blocked | Fails closed until clinical/legal approval |
+| GET `/api/v1/encounters/{id}/snapshots` | `clinical_doc.read` | list of snapshots | Lists encounter document snapshots and addenda; read audited (`T009`) |
+| GET `/api/v1/finance/estimates` | `finance.read` | list of estimates | Lists clinic versioned treatment estimates (`T009`) |
+| GET `/api/v1/finance/reconciliations` | `finance.read` | list of reconciliations | Lists daily cashier reconciliation records (`T009`) |
+| GET `/api/v1/archive/keys` | `archive.read` | key metadata | Lists per-clinic key versions and fingerprints (excludes wrapped DEK) (`T010`) |
+| POST `/api/v1/archive/keys/rotate` | `archive.key_manage` | new active key | Retires active key to `retired_decrypt_only` and issues `v+1` (`T010`) |
+| POST `/api/v1/archive/keys/{id}/revoke` | `archive.key_manage` | revoked key | Marks tenant key `revoked`; blocks future decrypt/restore (`T010`) |
+| GET/POST `/api/v1/archive/objects` | `archive.read`/`write` | `ArchiveObjectCreate` | Stores/lists envelope-encrypted clinical/DICOM/scan blobs (`DLY1` Encrypt-then-MAC) (`T010`) |
+| GET `/api/v1/archive/objects/{id}/verify` | `archive.read` | integrity report | Unwraps DEK, verifies tag and plaintext/ciphertext SHA-256; read audited (`T010`) |
+| POST `/api/v1/archive/objects/{id}/legal-hold` | `archive.key_manage` | `ArchiveLegalHoldRequest` | Places explicit audited `legal_hold` on archive object (`T010`) |
+| DELETE `/api/v1/archive/objects/{id}` | `archive.key_manage` | 409 blocked | Fails closed (`409`) under active retention or legal hold (`INV-018` / `DR-08`) |
+| GET/POST `/api/v1/archive/backups` | `archive.read`/`restore` | `BackupCreateRequest` | Creates/lists signed cross-store backup manifest + encrypted object bundle (`T010`) |
+| POST `/api/v1/archive/backups/{id}/restore-drill` | `archive.restore` | `RestoreDrillRequest` | Restores to isolated SQLite DB, verifies objects/keys/signatures, measures `rto_ms` & `rpo_lag_ms` (`DR-04`, `DR-05`, `NEG-13`) |
+| GET `/api/v1/archive/restore-drills` | `archive.read` | drill history | Lists passed/failed isolated DR restore drill runs (`T010`) |
 | GET `/api/v1/dashboard` | `dashboard.read` | basic counts | No clinical or financial inference |
 | GET `/api/v1/audit-events` | `audit.read` | demo history | Includes mutation and sensitive clinical read/denial events |
 

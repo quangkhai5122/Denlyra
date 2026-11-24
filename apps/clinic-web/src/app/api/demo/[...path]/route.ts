@@ -47,4 +47,4 @@ async function forward(req: NextRequest, ctx: Ctx): Promise<Response> {
   }
 }
 
-export { forward as GET, forward as POST, forward as PUT };
+export { forward as GET, forward as POST, forward as PUT, forward as DELETE };

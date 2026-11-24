@@ -22,8 +22,10 @@ Freeze affected association, preserve object manifests, investigate mismatched p
 ## Runbook 6 — Data breach / suspected cross-tenant leak
 Suspend affected access, revoke credentials, preserve evidence securely, identify impact and seek qualified privacy/legal counsel for reporting requirements. Never copy medical notes into bug trackers, Slack or coding prompts. Issue signed patch after tests and document audit trail.
 
-## Runbook 7 — Full disaster recovery drill (future)
-Restore PostgreSQL PITR, object storage, media/DICOM archives, exact signed record artifacts, audit journal and encryption keys into isolated environment. Enumerate restored patient/encounter/file manifests, verify digests, signature validation and cross-reference consistency; compare snapshot counts and test access controls before returning to service.
+## Runbook 7 — Full disaster recovery drill (`T010`)
+1. Run `python scripts/run_dr_restore_drill.py` (disposable synthetic verification) or call `POST /api/v1/archive/backups/{backup_id}/restore-drill` as `clinic_owner` / `medical_director`.
+2. Restore relational checkpoint, encrypted `archive_object` blobs (`clinical_attachment`, `dicom_study_stub`, `legacy_paper_scan`), `ClinicalDocumentSnapshot` signature receipts, and wrapped `tenant_encryption_key` rows into an isolated database and directory — NEVER overwrite an active clinic DB in place.
+3. Verify zero missing blobs (`NEG-13`), zero ciphertext/tag mismatches, zero stale object-store checkpoints (`DR-05`), and 100% signature receipt verification (`DR-04`); review `rto_ms` and `rpo_lag_ms` in `restore_drill_run` per [RETENTION_AND_DR_POLICY.md](RETENTION_AND_DR_POLICY.md).
 
 ## Runbook 8 — Agent context recovery
 `git status --short`, `git log -5 --oneline`, `cat AGENTS.md`, `cat docs/PROJECT_STATE.md`, review task ID, run tests, inspect diff. Do not trust prior agent's 'done' statement without runnable evidence.

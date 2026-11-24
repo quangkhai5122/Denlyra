@@ -18,13 +18,16 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from . import auth, models as m, services as svc
+from . import archive_dr, auth, models as m, services as svc
 from .config import Settings
 from .db import build_engine, init_demo_schema, session_factory
 from .schemas import (
     AllocationCreate,
     AppointmentCreate,
     AppointmentReschedule,
+    ArchiveLegalHoldRequest,
+    ArchiveObjectCreate,
+    BackupCreateRequest,
     CashierReconciliationCreate,
     ChargeCreate,
     ConsentCreate,
@@ -58,6 +61,7 @@ from .schemas import (
     PlanReassessmentCreate,
     RefundCreate,
     ResourceCreateRequest,
+    RestoreDrillRequest,
     SignedUrlCreateRequest,
     StaffCreateRequest,
     TaskCoordinationLinkCreate,
@@ -74,7 +78,7 @@ def doc(item):
     """Serialize only fields explicitly safe for synthetic demo output."""
     output = {}
     for column in item.__table__.columns:
-        if column.name == "metadata_json":
+        if column.name in {"metadata_json", "wrapped_dek_b64", "manifest_json"}:
             continue
         value = getattr(item, column.name)
         output[column.name] = value.isoformat() + "Z" if isinstance(value, datetime) else value
@@ -936,6 +940,181 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     ):
         db, clinic_id, actor = context
         return svc.export_official_form_blocked(db, clinic_id, payload, actor)
+
+    @app.get("/api/v1/encounters/{encounter_id}/snapshots")
+    def list_encounter_snapshots(
+        encounter_id: str,
+        context=Depends(require_perm("clinical_doc.read", audit_read=True)),
+    ):
+        db, clinic_id, _ = context
+        svc.ensure(db, m.Encounter, encounter_id, clinic_id)
+        rows = db.scalars(
+            select(m.ClinicalDocumentSnapshot)
+            .where(
+                m.ClinicalDocumentSnapshot.clinic_id == clinic_id,
+                m.ClinicalDocumentSnapshot.encounter_id == encounter_id,
+            )
+            .order_by(m.ClinicalDocumentSnapshot.created_at)
+        ).all()
+        return [svc._serialize_snapshot(s) for s in rows]
+
+    @app.get("/api/v1/finance/estimates")
+    def list_estimates(context=Depends(require_perm("finance.read"))):
+        db, clinic_id, _ = context
+        return [
+            doc(e)
+            for e in db.scalars(
+                select(m.EstimateVersion)
+                .where(m.EstimateVersion.clinic_id == clinic_id)
+                .order_by(m.EstimateVersion.created_at.desc())
+            )
+        ]
+
+    @app.get("/api/v1/finance/reconciliations")
+    def list_reconciliations(context=Depends(require_perm("finance.read"))):
+        db, clinic_id, _ = context
+        return [
+            doc(r)
+            for r in db.scalars(
+                select(m.CashierReconciliation)
+                .where(m.CashierReconciliation.clinic_id == clinic_id)
+                .order_by(m.CashierReconciliation.created_at.desc())
+            )
+        ]
+
+    @app.get("/api/v1/archive/keys")
+    def list_archive_keys(context=Depends(require_perm("archive.read"))):
+        db, clinic_id, _ = context
+        return [
+            doc(k)
+            for k in db.scalars(
+                select(m.TenantEncryptionKey)
+                .where(m.TenantEncryptionKey.clinic_id == clinic_id)
+                .order_by(m.TenantEncryptionKey.key_version.desc())
+            )
+        ]
+
+    @app.post("/api/v1/archive/keys/rotate", status_code=201)
+    def rotate_archive_key(context=Depends(require_perm("archive.key_manage"))):
+        db, clinic_id, actor = context
+        return doc(
+            archive_dr.rotate_tenant_key(db, clinic_id, cfg.archive_master_secret, actor)
+        )
+
+    @app.post("/api/v1/archive/keys/{key_id}/revoke")
+    def revoke_archive_key(
+        key_id: str, context=Depends(require_perm("archive.key_manage"))
+    ):
+        db, clinic_id, actor = context
+        return doc(archive_dr.revoke_tenant_key(db, clinic_id, key_id, actor))
+
+    @app.get("/api/v1/archive/objects")
+    def list_archive_objects(context=Depends(require_perm("archive.read"))):
+        db, clinic_id, _ = context
+        return [
+            doc(o)
+            for o in db.scalars(
+                select(m.ArchiveObject)
+                .where(m.ArchiveObject.clinic_id == clinic_id)
+                .order_by(m.ArchiveObject.created_at.desc())
+            )
+        ]
+
+    @app.post("/api/v1/archive/objects", status_code=201)
+    def upload_archive_object(
+        payload: ArchiveObjectCreate, context=Depends(require_perm("archive.write"))
+    ):
+        db, clinic_id, actor = context
+        return doc(
+            archive_dr.store_archive_object(
+                db,
+                clinic_id,
+                cfg.archive_dir,
+                cfg.archive_master_secret,
+                payload,
+                actor,
+            )
+        )
+
+    @app.get("/api/v1/archive/objects/{object_id}/verify")
+    def verify_archive_object_endpoint(
+        object_id: str, context=Depends(require_perm("archive.read", audit_read=True))
+    ):
+        db, clinic_id, _ = context
+        return archive_dr.verify_archive_object(
+            db, clinic_id, object_id, cfg.archive_dir, cfg.archive_master_secret
+        )
+
+    @app.post("/api/v1/archive/objects/{object_id}/legal-hold")
+    def hold_archive_object(
+        object_id: str,
+        payload: ArchiveLegalHoldRequest,
+        context=Depends(require_perm("archive.key_manage")),
+    ):
+        db, clinic_id, actor = context
+        return doc(
+            archive_dr.place_legal_hold(db, clinic_id, object_id, payload.reason, actor)
+        )
+
+    @app.delete("/api/v1/archive/objects/{object_id}")
+    def delete_archive_object(
+        object_id: str, context=Depends(require_perm("archive.key_manage"))
+    ):
+        db, clinic_id, actor = context
+        return archive_dr.delete_archive_object_blocked(db, clinic_id, object_id, actor)
+
+    @app.get("/api/v1/archive/backups")
+    def list_archive_backups(context=Depends(require_perm("archive.read"))):
+        db, clinic_id, _ = context
+        return [
+            doc(b)
+            for b in db.scalars(
+                select(m.BackupManifest)
+                .where(m.BackupManifest.clinic_id == clinic_id)
+                .order_by(m.BackupManifest.created_at.desc())
+            )
+        ]
+
+    @app.post("/api/v1/archive/backups", status_code=201)
+    def create_archive_backup(
+        payload: BackupCreateRequest, context=Depends(require_perm("archive.restore"))
+    ):
+        db, clinic_id, actor = context
+        return doc(
+            archive_dr.create_backup_snapshot(
+                db, clinic_id, cfg.archive_dir, cfg.auth_secret, payload, actor
+            )
+        )
+
+    @app.post("/api/v1/archive/backups/{backup_id}/restore-drill")
+    def execute_restore_drill(
+        backup_id: str,
+        payload: RestoreDrillRequest,
+        context=Depends(require_perm("archive.restore")),
+    ):
+        db, clinic_id, actor = context
+        return archive_dr.run_isolated_restore_drill(
+            db,
+            clinic_id,
+            backup_id,
+            cfg.archive_dir,
+            cfg.archive_master_secret,
+            cfg.auth_secret,
+            payload,
+            actor,
+        )
+
+    @app.get("/api/v1/archive/restore-drills")
+    def list_restore_drills(context=Depends(require_perm("archive.read"))):
+        db, clinic_id, _ = context
+        return [
+            doc(d)
+            for d in db.scalars(
+                select(m.RestoreDrillRun)
+                .where(m.RestoreDrillRun.clinic_id == clinic_id)
+                .order_by(m.RestoreDrillRun.created_at.desc())
+            )
+        ]
 
     @app.get("/api/v1/dashboard")
     def dashboard(context=Depends(require_perm("dashboard.read"))):

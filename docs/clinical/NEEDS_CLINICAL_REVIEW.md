@@ -1,6 +1,6 @@
 # Clinical & Legal Review Gate — Outpatient Dental EMR Forms (`T003` / `T004`)
 
-Date: 2026-11-18 · Status: **BLOCKED ON NAMED HUMAN REVIEWERS** · Tasks affected: `T003`, `T004`, `M0`, `M3`
+Date: 2026-11-24 · Status: **BLOCKED ON NAMED HUMAN REVIEWERS** · Tasks affected: `T003`, `T004`, `T010`, `M0`, `M3`
 
 > **Hard Safety Rule (`AGENTS.md`):** No AI Coding Agent may self-approve regulatory mappings, clinical form completeness, retention schedules, or electronic signature validity. Until a licensed Vietnamese dentist (Clinical Director) and qualified legal counsel sign off on the items below, `FormRegistry` templates remain locked in `quarantined_synthetic_draft` state and official EMR export/signing endpoints fail closed (`409 Conflict`).
 
@@ -12,8 +12,8 @@ Date: 2026-11-18 · Status: **BLOCKED ON NAMED HUMAN REVIEWERS** · Tasks affect
    - Diff all clauses amending Circular 32/2023 to confirm whether any administrative, clinical, or signature fields on `13/BV-01` or `16/BV-01` were modified.
 3. **Circular 13/2025/TT-BYT & Provincial Sở Y tế guidance:**
    - Confirm each partner clinic's exact operating license classification (`phòng khám chuyên khoa Răng Hàm Mặt` vs. multi-specialty clinic vs. hospital department) and outpatient/day-care applicability.
-4. **Circular 33/2025/TT-BYT (Record retention):**
-   - Confirm exact retention durations per dental record category and legal-hold rules upon patient export or clinic subscription termination.
+4. **Circular 33/2025/TT-BYT (Record retention — `T010`):**
+   - Confirm exact retention durations per dental record category and legal-hold rules upon patient export or clinic subscription termination. Technical enforcement (`ArchiveObject.retention_until`, `legal_hold`, and `409` physical deletion block) is implemented in conservative 20-year quarantine mode per [RETENTION_AND_DR_POLICY.md](../operations/RETENTION_AND_DR_POLICY.md) awaiting counsel sign-off.
 
 ## 2. Field-by-field clinical review checklist (`16/BV-01`)
 For each section of `16/BV-01`, the named Clinical Director must confirm:

@@ -340,3 +340,37 @@ class DocumentAddendumCreate(BaseModel):
 
 class DocumentEnterInErrorRequest(BaseModel):
     reason: str = Field(min_length=3, max_length=300)
+
+
+class ArchiveObjectCreate(BaseModel):
+    patient_id: str
+    encounter_id: str | None = None
+    snapshot_id: str | None = None
+    object_kind: Literal[
+        "clinical_attachment",
+        "dicom_study_stub",
+        "legacy_paper_scan",
+        "signed_snapshot_export",
+    ] = "clinical_attachment"
+    media_type: str = Field(default="application/octet-stream", min_length=3, max_length=80)
+    original_filename: str = Field(min_length=1, max_length=200)
+    content_b64: str = Field(min_length=4, max_length=2_000_000)
+    retention_class: Literal[
+        "clinical_emr_quarantined",
+        "radiology_dicom_quarantined",
+        "financial_record",
+    ] = "clinical_emr_quarantined"
+
+
+class ArchiveLegalHoldRequest(BaseModel):
+    reason: str = Field(min_length=3, max_length=260)
+
+
+class BackupCreateRequest(BaseModel):
+    label: str = Field(min_length=2, max_length=160)
+    object_store_lag_seconds: int = Field(default=0, ge=0, le=86400)
+
+
+class RestoreDrillRequest(BaseModel):
+    target_clinic_id: str | None = None
+    override_master_secret: str | None = None

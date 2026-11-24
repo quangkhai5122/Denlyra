@@ -581,3 +581,82 @@ class MigrationItem(Base):
     reviewer_note: Mapped[str | None] = mapped_column(String(300))
     reviewed_by: Mapped[str | None] = mapped_column(String(100))
     created_at: Mapped[datetime] = created_col()
+
+
+class TenantEncryptionKey(Base):
+    __tablename__ = "tenant_encryption_key"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    key_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    wrapped_dek_b64: Mapped[str] = mapped_column(Text, nullable=False)
+    key_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="active")
+    rotated_by: Mapped[str] = mapped_column(String(100), nullable=False)
+    created_at: Mapped[datetime] = created_col()
+    __table_args__ = (
+        UniqueConstraint("clinic_id", "key_version", name="uq_tenant_key_clinic_version"),
+    )
+
+
+class ArchiveObject(Base):
+    __tablename__ = "archive_object"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    patient_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    encounter_id: Mapped[str | None] = mapped_column(String(36))
+    snapshot_id: Mapped[str | None] = mapped_column(String(36))
+    object_kind: Mapped[str] = mapped_column(String(40), nullable=False)
+    media_type: Mapped[str] = mapped_column(String(80), nullable=False)
+    original_filename: Mapped[str] = mapped_column(String(200), nullable=False)
+    byte_size: Mapped[int] = mapped_column(Integer, nullable=False)
+    plaintext_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    ciphertext_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    key_id: Mapped[str] = mapped_column(ForeignKey("tenant_encryption_key.id"), nullable=False)
+    key_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    storage_relpath: Mapped[str] = mapped_column(String(260), nullable=False)
+    retention_class: Mapped[str] = mapped_column(
+        String(40), nullable=False, default="clinical_emr_quarantined"
+    )
+    retention_until: Mapped[datetime] = mapped_column(DateTime(), nullable=False)
+    legal_hold: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    legal_hold_reason: Mapped[str | None] = mapped_column(String(260))
+    actor_demo: Mapped[str] = mapped_column(String(100), nullable=False)
+    created_at: Mapped[datetime] = created_col()
+    __table_args__ = (
+        ForeignKeyConstraint(["clinic_id", "patient_id"], ["patient.clinic_id", "patient.id"]),
+    )
+
+
+class BackupManifest(Base):
+    __tablename__ = "backup_manifest"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    label: Mapped[str] = mapped_column(String(160), nullable=False)
+    db_checkpoint_at: Mapped[datetime] = mapped_column(DateTime(), nullable=False)
+    object_store_checkpoint_at: Mapped[datetime] = mapped_column(DateTime(), nullable=False)
+    bundle_relpath: Mapped[str] = mapped_column(String(260), nullable=False)
+    manifest_json: Mapped[str] = mapped_column(Text, nullable=False)
+    manifest_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    manifest_hmac: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="sealed")
+    actor_demo: Mapped[str] = mapped_column(String(100), nullable=False)
+    created_at: Mapped[datetime] = created_col()
+
+
+class RestoreDrillRun(Base):
+    __tablename__ = "restore_drill_run"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    backup_id: Mapped[str] = mapped_column(ForeignKey("backup_manifest.id"), nullable=False)
+    target_clinic_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False)
+    integrity_ok: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    restored_patients: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    restored_snapshots: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    restored_objects: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    rto_ms: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    rpo_lag_ms: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    failure_code: Mapped[str | None] = mapped_column(String(80))
+    failure_detail: Mapped[str | None] = mapped_column(String(400))
+    actor_demo: Mapped[str] = mapped_column(String(100), nullable=False)
+    created_at: Mapped[datetime] = created_col()

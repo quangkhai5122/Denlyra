@@ -98,6 +98,10 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
     },
     "migration.read": {"clinic_owner", "medical_director", "dentist", "receptionist"},
     "migration.write": {"clinic_owner", "medical_director", "dentist"},
+    "archive.read": {"clinic_owner", "medical_director", "dentist"},
+    "archive.write": {"clinic_owner", "medical_director", "dentist"},
+    "archive.key_manage": {"clinic_owner", "medical_director"},
+    "archive.restore": {"clinic_owner", "medical_director"},
     "signed_url.create": {"clinic_owner", "medical_director", "dentist"},
     "signed_url.consume": {"clinic_owner", "medical_director", "dentist"},
 }
