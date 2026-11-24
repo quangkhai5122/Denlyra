@@ -18,7 +18,17 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from . import ai_harness, archive_dr, auth, fhir_interop, inventory, models as m, services as svc
+from . import (
+    ai_harness,
+    archive_dr,
+    audit_chain,
+    auth,
+    fhir_interop,
+    inventory,
+    models as m,
+    operations,
+    services as svc,
+)
 from .config import Settings
 from .db import build_engine, init_demo_schema, session_factory
 from .schemas import (
@@ -26,13 +36,18 @@ from .schemas import (
     AIDraftAcceptRequest,
     AITimelineSummaryRequest,
     AllocationCreate,
+    AppointmentConfirmationCreate,
     AppointmentCreate,
     AppointmentReschedule,
     ArchiveLegalHoldRequest,
     ArchiveObjectCreate,
     BackupCreateRequest,
     CashierReconciliationCreate,
+    ChairTurnoverCompleteRequest,
+    ChairTurnoverCreate,
     ChargeCreate,
+    CheckinCreate,
+    CheckinStatusUpdate,
     ConsentCreate,
     ConsentWithdrawRequest,
     DentalFindingCreate,
@@ -65,12 +80,16 @@ from .schemas import (
     PlanReassessmentCreate,
     PurchaseOrderCreate,
     PurchaseOrderReceiveRequest,
+    RecallCloseRequest,
+    RecallCreate,
     RefundCreate,
     ResourceCreateRequest,
+    ResourceDowntimeCreate,
     RestoreDrillRequest,
     SignedUrlCreateRequest,
     SkuCreate,
     StaffCreateRequest,
+    StaffShiftCreate,
     StockAdjustmentApproveRequest,
     StockAdjustmentCreate,
     StockConsumptionCreate,
@@ -364,6 +383,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         db.commit()
         return doc(patient)
 
+    @app.get("/api/v1/patients/page")
+    def list_patients_paginated(
+        q: str | None = None,
+        limit: int = 20,
+        cursor: str | None = None,
+        context=Depends(require_perm("patient.read")),
+    ):
+        db, clinic_id, _ = context
+        return audit_chain.paginate_patients(db, clinic_id, cfg.auth_secret, q, limit, cursor)
+
     @app.get("/api/v1/patients/{patient_id}")
     def get_patient(patient_id: str, context=Depends(require_perm("patient.read"))):
         db, clinic_id, _ = context
@@ -417,6 +446,35 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     ):
         db, clinic_id, actor = context
         return doc(svc.schedule(db, clinic_id, payload, actor))
+
+    @app.get("/api/v1/appointments/page")
+    def list_appointments_paginated(
+        limit: int = 20,
+        cursor: str | None = None,
+        context=Depends(require_perm("appointment.read")),
+    ):
+        db, clinic_id, _ = context
+        return audit_chain.paginate_appointments(db, clinic_id, cfg.auth_secret, limit, cursor)
+
+    @app.get("/api/v1/appointments/{appointment_id}/confirmations")
+    def get_appointment_confirmations(
+        appointment_id: str, context=Depends(require_perm("appointment.read"))
+    ):
+        db, clinic_id, _ = context
+        return operations.get_appointment_confirmation_summary(db, clinic_id, appointment_id)
+
+    @app.post("/api/v1/appointments/{appointment_id}/confirmations", status_code=201)
+    def post_appointment_confirmation(
+        appointment_id: str,
+        payload: AppointmentConfirmationCreate,
+        context=Depends(require_perm("appointment.write")),
+    ):
+        db, clinic_id, actor = context
+        return doc(
+            operations.record_appointment_confirmation(
+                db, clinic_id, appointment_id, payload, actor
+            )
+        )
 
     @app.post("/api/v1/appointments/{appointment_id}/cancel")
     def cancel(appointment_id: str, context=Depends(require_perm("appointment.write"))):
@@ -1330,6 +1388,156 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 .order_by(m.AIEvaluationRun.created_at.desc())
             )
         ]
+
+    @app.get("/api/v1/operations/shifts")
+    def list_shifts(context=Depends(require_perm("operations.read"))):
+        db, clinic_id, _ = context
+        return [
+            doc(s)
+            for s in db.scalars(
+                select(m.StaffShift)
+                .where(m.StaffShift.clinic_id == clinic_id)
+                .order_by(m.StaffShift.start_at)
+            )
+        ]
+
+    @app.post("/api/v1/operations/shifts", status_code=201)
+    def add_shift(
+        payload: StaffShiftCreate, context=Depends(require_perm("operations.shift_manage"))
+    ):
+        db, clinic_id, actor = context
+        return doc(operations.create_staff_shift(db, clinic_id, payload, actor))
+
+    @app.get("/api/v1/operations/downtimes")
+    def list_downtimes(context=Depends(require_perm("operations.read"))):
+        db, clinic_id, _ = context
+        return [
+            doc(d)
+            for d in db.scalars(
+                select(m.ResourceDowntime)
+                .where(m.ResourceDowntime.clinic_id == clinic_id)
+                .order_by(m.ResourceDowntime.start_at)
+            )
+        ]
+
+    @app.post("/api/v1/operations/downtimes", status_code=201)
+    def add_downtime(
+        payload: ResourceDowntimeCreate,
+        context=Depends(require_perm("operations.downtime_manage")),
+    ):
+        db, clinic_id, actor = context
+        return doc(operations.create_resource_downtime(db, clinic_id, payload, actor))
+
+    @app.post("/api/v1/operations/downtimes/{downtime_id}/resolve")
+    def resolve_downtime(
+        downtime_id: str,
+        context=Depends(require_perm("operations.downtime_manage")),
+    ):
+        db, clinic_id, actor = context
+        return doc(operations.resolve_resource_downtime(db, clinic_id, downtime_id, actor))
+
+    @app.get("/api/v1/operations/turnovers")
+    def list_turnovers(context=Depends(require_perm("operations.read"))):
+        db, clinic_id, _ = context
+        return [
+            doc(t)
+            for t in db.scalars(
+                select(m.ChairTurnoverChecklist)
+                .where(m.ChairTurnoverChecklist.clinic_id == clinic_id)
+                .order_by(m.ChairTurnoverChecklist.created_at.desc())
+            )
+        ]
+
+    @app.post("/api/v1/operations/turnovers", status_code=201)
+    def add_turnover(
+        payload: ChairTurnoverCreate,
+        context=Depends(require_perm("operations.turnover")),
+    ):
+        db, clinic_id, actor = context
+        return doc(operations.create_chair_turnover(db, clinic_id, payload, actor))
+
+    @app.post("/api/v1/operations/turnovers/{checklist_id}/complete")
+    def finish_turnover(
+        checklist_id: str,
+        payload: ChairTurnoverCompleteRequest,
+        context=Depends(require_perm("operations.turnover")),
+    ):
+        db, clinic_id, actor = context
+        return doc(
+            operations.complete_chair_turnover(db, clinic_id, checklist_id, payload, actor)
+        )
+
+    @app.get("/api/v1/operations/checkins")
+    def list_checkins(context=Depends(require_perm("operations.read"))):
+        db, clinic_id, _ = context
+        return [
+            doc(c)
+            for c in db.scalars(
+                select(m.CheckinQueueItem)
+                .where(m.CheckinQueueItem.clinic_id == clinic_id)
+                .order_by(m.CheckinQueueItem.created_at.desc())
+            )
+        ]
+
+    @app.post("/api/v1/operations/checkins", status_code=201)
+    def add_checkin(
+        payload: CheckinCreate, context=Depends(require_perm("operations.checkin"))
+    ):
+        db, clinic_id, actor = context
+        return doc(operations.create_checkin(db, clinic_id, payload, actor))
+
+    @app.post("/api/v1/operations/checkins/{checkin_id}/status")
+    def update_checkin_status(
+        checkin_id: str,
+        payload: CheckinStatusUpdate,
+        context=Depends(require_perm("operations.checkin")),
+    ):
+        db, clinic_id, actor = context
+        return doc(
+            operations.transition_checkin_status(db, clinic_id, checkin_id, payload, actor)
+        )
+
+    @app.get("/api/v1/operations/recalls")
+    def list_recalls(context=Depends(require_perm("operations.read"))):
+        db, clinic_id, _ = context
+        return [
+            doc(r)
+            for r in db.scalars(
+                select(m.RecallFollowupItem)
+                .where(m.RecallFollowupItem.clinic_id == clinic_id)
+                .order_by(m.RecallFollowupItem.due_date.asc())
+            )
+        ]
+
+    @app.post("/api/v1/operations/recalls", status_code=201)
+    def add_recall(
+        payload: RecallCreate, context=Depends(require_perm("operations.recall"))
+    ):
+        db, clinic_id, actor = context
+        return doc(operations.create_recall_item(db, clinic_id, payload, actor))
+
+    @app.post("/api/v1/operations/recalls/{recall_id}/close")
+    def finish_recall(
+        recall_id: str,
+        payload: RecallCloseRequest,
+        context=Depends(require_perm("operations.recall")),
+    ):
+        db, clinic_id, actor = context
+        return doc(operations.close_recall_item(db, clinic_id, recall_id, payload, actor))
+
+    @app.get("/api/v1/audit-events/page")
+    def list_audit_events_paginated(
+        limit: int = 50,
+        cursor: str | None = None,
+        context=Depends(require_perm("audit.read")),
+    ):
+        db, clinic_id, _ = context
+        return audit_chain.paginate_audit_events(db, clinic_id, cfg.auth_secret, limit, cursor)
+
+    @app.get("/api/v1/audit-events/verify-chain")
+    def verify_audit_chain_endpoint(context=Depends(require_perm("audit.read"))):
+        db, clinic_id, _ = context
+        return audit_chain.verify_clinic_audit_chain(db, clinic_id)
 
     @app.get("/api/v1/dashboard")
     def dashboard(context=Depends(require_perm("dashboard.read"))):

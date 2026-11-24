@@ -19,6 +19,7 @@ class AppointmentCreate(BaseModel):
     reason_demo: str = Field(default="Demo appointment", min_length=2, max_length=260)
     equipment_ids: list[str] = Field(default_factory=list, max_length=10)
     idempotency_key: str | None = Field(default=None, min_length=4, max_length=120)
+    override_shift_reason: str | None = Field(default=None, min_length=3, max_length=260)
 
     @model_validator(mode="after")
     def check_utc(self):
@@ -36,6 +37,7 @@ class AppointmentReschedule(BaseModel):
     end_at: datetime
     reason_demo: str = Field(default="Rescheduled demo appointment", min_length=2, max_length=260)
     equipment_ids: list[str] = Field(default_factory=list, max_length=10)
+    override_shift_reason: str | None = Field(default=None, min_length=3, max_length=260)
 
     @model_validator(mode="after")
     def check_utc(self):
@@ -449,3 +451,76 @@ class AITimelineSummaryRequest(BaseModel):
 
 class AIDraftAcceptRequest(BaseModel):
     clinician_edited_content: str = Field(min_length=5, max_length=10000)
+
+
+class StaffShiftCreate(BaseModel):
+    staff_id: str
+    start_at: datetime
+    end_at: datetime
+
+    @model_validator(mode="after")
+    def check_range(self):
+        if not self.start_at.tzinfo or not self.end_at.tzinfo:
+            raise ValueError("Provide timezone-aware RFC3339 timestamps")
+        if self.end_at <= self.start_at:
+            raise ValueError("Shift end_at must follow start_at")
+        return self
+
+
+class ResourceDowntimeCreate(BaseModel):
+    resource_id: str
+    start_at: datetime
+    end_at: datetime
+    reason: str = Field(min_length=3, max_length=260)
+
+    @model_validator(mode="after")
+    def check_range(self):
+        if not self.start_at.tzinfo or not self.end_at.tzinfo:
+            raise ValueError("Provide timezone-aware RFC3339 timestamps")
+        if self.end_at <= self.start_at:
+            raise ValueError("Downtime end_at must follow start_at")
+        return self
+
+
+class AppointmentConfirmationCreate(BaseModel):
+    event_type: Literal["sent", "delivered", "patient_confirmed", "declined"]
+    channel: Literal["phone", "sms_stub", "zalo_stub", "in_person"] = "phone"
+    evidence_note: str = Field(min_length=2, max_length=260)
+
+
+class ChairTurnoverCreate(BaseModel):
+    chair_id: str
+    appointment_id: str
+
+
+class ChairTurnoverCompleteRequest(BaseModel):
+    surface_disinfected: bool
+    sterile_kit_verified: bool
+    waterline_flushed: bool
+    assistant_prep_ready: bool
+    notes: str = Field(default="", max_length=260)
+
+
+class CheckinCreate(BaseModel):
+    appointment_id: str
+    identity_verified: bool
+    verification_method: Literal["photo_id_checked", "guardian_verified", "returning_verified"]
+    notes: str = Field(default="", max_length=260)
+
+
+class CheckinStatusUpdate(BaseModel):
+    next_status: Literal["in_chair", "checked_out", "no_show"]
+    notes: str = Field(default="", max_length=260)
+
+
+class RecallCreate(BaseModel):
+    patient_id: str
+    kind: Literal["clinical_recall", "marketing_outreach"]
+    due_date: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
+    reason: str = Field(min_length=3, max_length=300)
+    clinician_approved: bool = False
+    owner_role: Literal["treatment_coordinator", "receptionist", "dentist"] = "treatment_coordinator"
+
+
+class RecallCloseRequest(BaseModel):
+    closure_evidence: str = Field(min_length=3, max_length=300)

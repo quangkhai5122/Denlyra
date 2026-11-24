@@ -68,6 +68,38 @@ BEGIN
 END;
 """
 
+SQLITE_DOWNTIME_BLOCK_TRIGGER = """
+CREATE TRIGGER IF NOT EXISTS tr_no_booking_during_downtime
+BEFORE INSERT ON resource_booking
+WHEN NEW.state = 'active' AND EXISTS (
+    SELECT 1 FROM resource_downtime rd
+    WHERE rd.clinic_id = NEW.clinic_id
+      AND rd.resource_key = NEW.resource_key
+      AND rd.status = 'active'
+      AND rd.start_at < NEW.end_at
+      AND rd.end_at > NEW.start_at
+)
+BEGIN
+    SELECT RAISE(ABORT, 'resource_in_maintenance_downtime');
+END;
+"""
+
+SQLITE_AUDIT_NO_UPDATE_TRIGGER = """
+CREATE TRIGGER IF NOT EXISTS tr_audit_event_no_update
+BEFORE UPDATE ON audit_event
+BEGIN
+    SELECT RAISE(ABORT, 'audit_event_append_only_no_update');
+END;
+"""
+
+SQLITE_AUDIT_NO_DELETE_TRIGGER = """
+CREATE TRIGGER IF NOT EXISTS tr_audit_event_no_delete
+BEFORE DELETE ON audit_event
+BEGIN
+    SELECT RAISE(ABORT, 'audit_event_append_only_no_delete');
+END;
+"""
+
 
 class Base(DeclarativeBase):
     pass
@@ -93,7 +125,7 @@ def session_factory(engine):
 
 
 def init_demo_schema(engine):
-    from denlyra import models  # noqa: F401
+    from denlyra import audit_chain, models  # noqa: F401
     Base.metadata.create_all(engine)
     if engine.dialect.name == "sqlite":
         with engine.begin() as conn:
@@ -102,6 +134,9 @@ def init_demo_schema(engine):
             conn.execute(text(SQLITE_STOCK_MOVEMENT_NO_UPDATE_TRIGGER))
             conn.execute(text(SQLITE_STOCK_MOVEMENT_NO_DELETE_TRIGGER))
             conn.execute(text(SQLITE_STOCK_MOVEMENT_BOUNDS_TRIGGER))
+            conn.execute(text(SQLITE_DOWNTIME_BLOCK_TRIGGER))
+            conn.execute(text(SQLITE_AUDIT_NO_UPDATE_TRIGGER))
+            conn.execute(text(SQLITE_AUDIT_NO_DELETE_TRIGGER))
 
 
 def session_scope(factory) -> Generator[Session, None, None]:

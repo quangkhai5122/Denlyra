@@ -104,6 +104,16 @@ Base URL: `http://127.0.0.1:8766`, OpenAPI at `/api/docs`. **Start only after ex
 | POST `/api/v1/ai/drafts/timeline-summary` | `ai.draft` | `AITimelineSummaryRequest` | Source-linked longitudinal summary without inferred diagnosis (`AI-004`) |
 | POST `/api/v1/ai/drafts/{id}/accept-into-note-draft` | `ai.accept_clinical` | `AIDraftAcceptRequest` | Clinician-only acceptance creating `draft` `ClinicalNote` (never locked/signed) (`AI-003`) |
 | GET/POST `/api/v1/ai/evaluations` & `/run` | `ai.evaluate` | benchmark results | Runs/lists offline extraction & prompt-injection benchmark (`AI-009`, `AI-010`) |
+| GET `/api/v1/patients/page` | `patient.read` | paginated patients | Clinic-scoped `q` search + HMAC-signed opaque cursor (`PAT-002`, `R-012`) |
+| GET `/api/v1/appointments/page` | `appointment.read` | paginated appointments | Clinic-scoped HMAC-signed cursor pagination (`R-012`) |
+| GET/POST `/api/v1/appointments/{id}/confirmations` | `appointment.read`/`write` | `AppointmentConfirmationCreate` | Separates `sent`/`delivered` from `patient_confirmed`/`declined` (`SCH-009`, `CRM-003`) |
+| GET/POST `/api/v1/operations/shifts` | `operations.read`/`shift_manage` | `StaffShiftCreate` | Approved clinician working shift windows (`SCH-001`, `ORG-008`) |
+| GET/POST `/api/v1/operations/downtimes` & `/{id}/resolve` | `operations.read`/`downtime_manage` | `ResourceDowntimeCreate` | Chair/device maintenance blocks enforced in service + DB trigger (`SCH-015`, `HR-004`) |
+| GET/POST `/api/v1/operations/turnovers` & `/{id}/complete` | `operations.read`/`turnover` | `ChairTurnoverCreate` / `Complete` | Chair sanitation + assistant prep checklist (`HR-002`, `HR-003`) |
+| GET/POST `/api/v1/operations/checkins` & `/{id}/status` | `operations.read`/`checkin` | `CheckinCreate` / `CheckinStatusUpdate` | Identity-verified check-in (`PAT-009`) + turnover-gated `in_chair` (`SCH-010`) |
+| GET/POST `/api/v1/operations/recalls` & `/{id}/close` | `operations.read`/`recall` | `RecallCreate` / `RecallCloseRequest` | Clinician-approved recalls (`CRM-005`) & consent-safe marketing outreach (`CRM-010`) |
+| GET `/api/v1/audit-events/page` | `audit.read` | paginated audit events | HMAC-signed cursor pagination over `chain_seq` (`R-012`) |
+| GET `/api/v1/audit-events/verify-chain` | `audit.read` | chain verification | Recomputes genesis-to-head SHA-256 `prev_hash -> entry_hash` (`409` on tamper, `SEC-007`) |
 | GET `/api/v1/dashboard` | `dashboard.read` | basic counts | No clinical or financial inference |
 | GET `/api/v1/audit-events` | `audit.read` | demo history | Includes mutation and sensitive clinical read/denial events |
 

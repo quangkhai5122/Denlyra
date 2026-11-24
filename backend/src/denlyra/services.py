@@ -101,6 +101,57 @@ def equipment(db: Session, resource_id: str, clinic_id: str) -> m.Resource:
     return r
 
 
+def _enforce_shift_and_downtime(
+    db: Session,
+    clinic_id: str,
+    practitioner_id: str,
+    resource_keys: list[str],
+    start,
+    end,
+    override_shift_reason: str | None,
+    actor: str,
+) -> None:
+    downtime_hit = db.scalars(
+        select(m.ResourceDowntime).where(
+            m.ResourceDowntime.clinic_id == clinic_id,
+            m.ResourceDowntime.status == "active",
+            m.ResourceDowntime.resource_key.in_(resource_keys),
+            m.ResourceDowntime.start_at < end,
+            m.ResourceDowntime.end_at > start,
+        )
+    ).first()
+    if downtime_hit is not None:
+        raise HTTPException(
+            409,
+            f"Resource '{downtime_hit.resource_key}' unavailable due to maintenance downtime (SCH-015 / HR-004)",
+        )
+
+    active_shifts = db.scalars(
+        select(m.StaffShift).where(
+            m.StaffShift.clinic_id == clinic_id,
+            m.StaffShift.staff_id == practitioner_id,
+            m.StaffShift.active.is_(True),
+        )
+    ).all()
+    if active_shifts:
+        covered = any(sh.start_at <= start and sh.end_at >= end for sh in active_shifts)
+        if not covered:
+            if not override_shift_reason or not override_shift_reason.strip():
+                raise HTTPException(
+                    409,
+                    "Appointment falls outside approved clinician shift availability; reviewed override_shift_reason required (SCH-001)",
+                )
+            audit(
+                db,
+                clinic_id,
+                actor,
+                "scheduling.shift_override_reviewed",
+                "staff",
+                practitioner_id,
+                {"override_shift_reason": override_shift_reason.strip()},
+            )
+
+
 def audit(
     db: Session,
     clinic_id: str,
@@ -260,6 +311,16 @@ def schedule(
         f"chair:{data.chair_id}",
         *[f"device:{eq_id}" for eq_id in unique_eq],
     ]
+    _enforce_shift_and_downtime(
+        db,
+        clinic_id,
+        data.practitioner_id,
+        resource_keys,
+        start,
+        end,
+        data.override_shift_reason,
+        actor,
+    )
     if not skip_preread:
         overlaps = db.scalars(
             select(m.ResourceBooking).where(
@@ -359,6 +420,16 @@ def reschedule_appointment(
         f"chair:{new_chair_id}",
         *[f"device:{eq_id}" for eq_id in unique_eq],
     ]
+    _enforce_shift_and_downtime(
+        db,
+        clinic_id,
+        new_practitioner_id,
+        resource_keys,
+        start,
+        end,
+        data.override_shift_reason,
+        actor,
+    )
     try:
         old.status = "cancelled"
         old.version += 1

@@ -21,6 +21,12 @@ export interface AllocationCreate {
   idempotency_key?: string | null;
 }
 
+export interface AppointmentConfirmationCreate {
+  event_type: "sent" | "delivered" | "patient_confirmed" | "declined";
+  channel?: "phone" | "sms_stub" | "zalo_stub" | "in_person";
+  evidence_note: string;
+}
+
 export interface AppointmentCreate {
   patient_id: string;
   practitioner_id: string;
@@ -30,6 +36,7 @@ export interface AppointmentCreate {
   reason_demo?: string;
   equipment_ids?: string[];
   idempotency_key?: string | null;
+  override_shift_reason?: string | null;
 }
 
 export interface AppointmentReschedule {
@@ -39,6 +46,7 @@ export interface AppointmentReschedule {
   end_at: string;
   reason_demo?: string;
   equipment_ids?: string[];
+  override_shift_reason?: string | null;
 }
 
 export interface ArchiveLegalHoldRequest {
@@ -68,11 +76,36 @@ export interface CashierReconciliationCreate {
   notes?: string;
 }
 
+export interface ChairTurnoverCompleteRequest {
+  surface_disinfected: boolean;
+  sterile_kit_verified: boolean;
+  waterline_flushed: boolean;
+  assistant_prep_ready: boolean;
+  notes?: string;
+}
+
+export interface ChairTurnoverCreate {
+  chair_id: string;
+  appointment_id: string;
+}
+
 export interface ChargeCreate {
   patient_id: string;
   label: string;
   amount_vnd: number;
   idempotency_key?: string | null;
+}
+
+export interface CheckinCreate {
+  appointment_id: string;
+  identity_verified: boolean;
+  verification_method: "photo_id_checked" | "guardian_verified" | "returning_verified";
+  notes?: string;
+}
+
+export interface CheckinStatusUpdate {
+  next_status: "in_chair" | "checked_out" | "no_show";
+  notes?: string;
 }
 
 export interface ConsentCreate {
@@ -282,6 +315,19 @@ export interface PurchaseOrderReceiveRequest {
   quarantined?: boolean;
 }
 
+export interface RecallCloseRequest {
+  closure_evidence: string;
+}
+
+export interface RecallCreate {
+  patient_id: string;
+  kind: "clinical_recall" | "marketing_outreach";
+  due_date: string;
+  reason: string;
+  clinician_approved?: boolean;
+  owner_role?: "treatment_coordinator" | "receptionist" | "dentist";
+}
+
 export interface RefundCreate {
   amount_vnd: number;
   reason: string;
@@ -291,6 +337,13 @@ export interface RefundCreate {
 export interface ResourceCreateRequest {
   name: string;
   kind: "chair" | "device";
+}
+
+export interface ResourceDowntimeCreate {
+  resource_id: string;
+  start_at: string;
+  end_at: string;
+  reason: string;
 }
 
 export interface RestoreDrillRequest {
@@ -323,6 +376,12 @@ export interface StaffCreateRequest {
   display_name: string;
   role: "clinic_owner" | "medical_director" | "dentist" | "assistant" | "receptionist" | "treatment_coordinator" | "finance";
   branch_id?: string;
+}
+
+export interface StaffShiftCreate {
+  staff_id: string;
+  start_at: string;
+  end_at: string;
 }
 
 export interface StockAdjustmentApproveRequest {
@@ -406,7 +465,10 @@ export const OPENAPI_OPERATIONS = [
   "GET /api/v1/ai/models",
   "GET /api/v1/appointments",
   "POST /api/v1/appointments",
+  "GET /api/v1/appointments/page",
   "POST /api/v1/appointments/{appointment_id}/cancel",
+  "GET /api/v1/appointments/{appointment_id}/confirmations",
+  "POST /api/v1/appointments/{appointment_id}/confirmations",
   "POST /api/v1/appointments/{appointment_id}/reschedule",
   "GET /api/v1/archive/backups",
   "POST /api/v1/archive/backups",
@@ -421,6 +483,8 @@ export const OPENAPI_OPERATIONS = [
   "GET /api/v1/archive/objects/{object_id}/verify",
   "GET /api/v1/archive/restore-drills",
   "GET /api/v1/audit-events",
+  "GET /api/v1/audit-events/page",
+  "GET /api/v1/audit-events/verify-chain",
   "POST /api/v1/auth/revoke",
   "POST /api/v1/auth/signed-urls",
   "POST /api/v1/auth/token",
@@ -490,8 +554,23 @@ export const OPENAPI_OPERATIONS = [
   "POST /api/v1/migrations/paper-items/{item_id}/verify-link",
   "PUT /api/v1/notes/{note_id}",
   "POST /api/v1/notes/{note_id}/demo-lock",
+  "GET /api/v1/operations/checkins",
+  "POST /api/v1/operations/checkins",
+  "POST /api/v1/operations/checkins/{checkin_id}/status",
+  "GET /api/v1/operations/downtimes",
+  "POST /api/v1/operations/downtimes",
+  "POST /api/v1/operations/downtimes/{downtime_id}/resolve",
+  "GET /api/v1/operations/recalls",
+  "POST /api/v1/operations/recalls",
+  "POST /api/v1/operations/recalls/{recall_id}/close",
+  "GET /api/v1/operations/shifts",
+  "POST /api/v1/operations/shifts",
+  "GET /api/v1/operations/turnovers",
+  "POST /api/v1/operations/turnovers",
+  "POST /api/v1/operations/turnovers/{checklist_id}/complete",
   "GET /api/v1/patients",
   "POST /api/v1/patients",
+  "GET /api/v1/patients/page",
   "GET /api/v1/patients/{patient_id}",
   "GET /api/v1/patients/{patient_id}/consents",
   "GET /api/v1/patients/{patient_id}/odontogram",
@@ -848,7 +927,30 @@ export class DenlyraApiClient {
   listAiEvaluations() {
     return this.request<Array<{ id: string; model_code: string; total_cases: number; passed_cases: number; extraction_pass_rate_pct: number; injection_block_rate_pct: number; status: string; created_at: string }>>("GET", "ai/evaluations");
   }
+  listCheckins() {
+    return this.request<Array<{ id: string; appointment_id: string; patient_id: string; verification_method: string; status: string; created_at: string }>>("GET", "operations/checkins");
+  }
+  createCheckin(payload: CheckinCreate) {
+    return this.request<{ id: string; status: string }>("POST", "operations/checkins", payload);
+  }
+  listRecalls() {
+    return this.request<Array<{ id: string; patient_id: string; kind: string; due_date: string; reason: string; status: string; clinician_approved: boolean }>>("GET", "operations/recalls");
+  }
+  createRecall(payload: RecallCreate) {
+    return this.request<{ id: string; kind: string; status: string }>("POST", "operations/recalls", payload);
+  }
+  paginatePatients(params?: { q?: string; limit?: number; cursor?: string }) {
+    const sp = new URLSearchParams();
+    if (params?.q) sp.set("q", params.q);
+    if (params?.limit) sp.set("limit", String(params.limit));
+    if (params?.cursor) sp.set("cursor", params.cursor);
+    const qs = sp.toString();
+    return this.request<{ items: Array<{ id: string; display_name: string; birth_year: number | null; source: string }>; limit: number; has_more: boolean; next_cursor: string | null }>("GET", qs ? `patients/page?${qs}` : "patients/page");
+  }
+  verifyAuditChain() {
+    return this.request<{ clinic_id: string; verified_count: number; head_seq: number; head_hash: string; chain_intact: boolean }>("GET", "audit-events/verify-chain");
+  }
   listAuditEvents() {
-    return this.request<Array<{ id: string; actor_demo: string; action: string; subject_type: string; subject_id: string; created_at: string }>>("GET", "audit-events");
+    return this.request<Array<{ id: string; chain_seq: number; entry_hash: string; actor_demo: string; action: string; subject_type: string; subject_id: string; created_at: string }>>("GET", "audit-events");
   }
 }

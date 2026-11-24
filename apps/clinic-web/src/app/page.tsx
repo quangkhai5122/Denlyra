@@ -987,7 +987,28 @@ export default function ClinicWorkspacePage() {
                               {appt.reason_demo} · Trạng thái: <strong>{appt.status}</strong>
                             </div>
                             {appt.status === "confirmed" && (
-                              <div style={{ marginTop: 6 }}>
+                              <div style={{ marginTop: 6, display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                <button
+                                  type="button"
+                                  className="btn-secondary"
+                                  onClick={async () => {
+                                    setConflictMsg("");
+                                    const r = await client.createCheckin({
+                                      appointment_id: appt.id,
+                                      identity_verified: true,
+                                      verification_method: "photo_id_checked",
+                                    });
+                                    if (!r.ok) handleApiFailure(r.status, r.detail, r.conflict);
+                                    else {
+                                      setStatusMsg(
+                                        "Đã xác minh định danh & đưa bệnh nhân vào hàng đợi phòng chờ (PAT-009 / SCH-010).",
+                                      );
+                                      await reloadWorkspaceData();
+                                    }
+                                  }}
+                                >
+                                  Check-in (Đã đối chiếu giấy tờ)
+                                </button>
                                 <button
                                   type="button"
                                   className="btn-danger"
@@ -1878,10 +1899,26 @@ export default function ClinicWorkspacePage() {
           </section>
 
           <section className="card">
-            <h2>2. Nhật ký Kiểm toán Truy cập &amp; Thao tác Nhạy cảm (EMR-017)</h2>
+            <h2>2. Nhật ký Kiểm toán Nối chuỗi Băm SHA-256 (T014 · SEC-007 &amp; EMR-017)</h2>
             <p className="muted">
-              Không lưu trữ nội dung ghi chú y khoa hoặc thông tin định danh thật trong nhật ký vận hành.
+              Mỗi sự kiện liên kết <code>prev_hash → entry_hash</code> và có trigger chặn sửa/xóa trực tiếp.
             </p>
+            <div style={{ marginBottom: 10 }}>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={async () => {
+                  setConflictMsg("");
+                  const r = await client.verifyAuditChain();
+                  if (!r.ok) return handleApiFailure(r.status, r.detail, r.conflict);
+                  setStatusMsg(
+                    `Chuỗi băm Nhật ký Kiểm toán TOÀN VẸN: đã xác minh ${r.data.verified_count} mắt xích (seq=${r.data.head_seq}, head=${r.data.head_hash.slice(0, 16)}…).`,
+                  );
+                }}
+              >
+                Kiểm chứng Toàn vẹn Chuỗi Băm Audit (Genesis → Head)
+              </button>
+            </div>
             {auditEvents.map((ev) => (
               <div className="line" key={ev.id}>
                 <div>

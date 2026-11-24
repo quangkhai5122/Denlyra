@@ -116,6 +116,21 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
     "ai.draft": {"clinic_owner", "medical_director", "dentist", "treatment_coordinator"},
     "ai.accept_clinical": {"medical_director", "dentist"},
     "ai.evaluate": {"clinic_owner", "medical_director", "dentist"},
+    "operations.read": {
+        "clinic_owner", "medical_director", "dentist", "assistant",
+        "receptionist", "treatment_coordinator",
+    },
+    "operations.shift_manage": {"clinic_owner", "medical_director"},
+    "operations.downtime_manage": {"clinic_owner", "medical_director", "dentist", "assistant"},
+    "operations.checkin": {
+        "clinic_owner", "medical_director", "dentist", "assistant",
+        "receptionist", "treatment_coordinator",
+    },
+    "operations.turnover": {"clinic_owner", "medical_director", "dentist", "assistant"},
+    "operations.recall": {
+        "clinic_owner", "medical_director", "dentist",
+        "receptionist", "treatment_coordinator",
+    },
     "signed_url.create": {"clinic_owner", "medical_director", "dentist"},
     "signed_url.consume": {"clinic_owner", "medical_director", "dentist"},
 }

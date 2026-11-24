@@ -54,6 +54,10 @@ test("INT-001 & NEG-02: generated DenlyraApiClient sends Bearer token and surfac
   assert.ok(OPENAPI_OPERATIONS.includes("GET /api/v1/interop/fhir/r4/patients/{patient_id}/bundle"));
   assert.ok(OPENAPI_OPERATIONS.includes("POST /api/v1/ai/drafts/dictation-extract"));
   assert.ok(OPENAPI_OPERATIONS.includes("POST /api/v1/ai/evaluations/run"));
+  assert.ok(OPENAPI_OPERATIONS.includes("GET /api/v1/audit-events/verify-chain"));
+  assert.ok(OPENAPI_OPERATIONS.includes("GET /api/v1/patients/page"));
+  assert.ok(OPENAPI_OPERATIONS.includes("POST /api/v1/operations/checkins"));
+  assert.ok(OPENAPI_OPERATIONS.includes("POST /api/v1/operations/recalls"));
 
   const capturedCalls = [];
   const origFetch = globalThis.fetch;

@@ -382,12 +382,18 @@ class AuditEvent(Base):
     __tablename__ = "audit_event"
     id: Mapped[str] = id_col()
     clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    chain_seq: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    prev_hash: Mapped[str] = mapped_column(String(64), nullable=False, default="0" * 64)
+    entry_hash: Mapped[str] = mapped_column(String(64), nullable=False, default="")
     actor_demo: Mapped[str] = mapped_column(String(100), nullable=False)
     action: Mapped[str] = mapped_column(String(100), nullable=False)
     subject_type: Mapped[str] = mapped_column(String(64), nullable=False)
     subject_id: Mapped[str] = mapped_column(String(36), nullable=False)
     metadata_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
     created_at: Mapped[datetime] = created_col()
+    __table_args__ = (
+        UniqueConstraint("clinic_id", "chain_seq", name="uq_audit_clinic_chain_seq"),
+    )
 
 
 class RevokedToken(Base):
@@ -825,3 +831,109 @@ class AIEvaluationRun(Base):
     details_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
     actor_demo: Mapped[str] = mapped_column(String(100), nullable=False)
     created_at: Mapped[datetime] = created_col()
+
+
+class StaffShift(Base):
+    __tablename__ = "staff_shift"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    staff_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    start_at: Mapped[datetime] = mapped_column(DateTime(), nullable=False)
+    end_at: Mapped[datetime] = mapped_column(DateTime(), nullable=False)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    actor_demo: Mapped[str] = mapped_column(String(100), nullable=False)
+    created_at: Mapped[datetime] = created_col()
+    __table_args__ = (
+        ForeignKeyConstraint(["clinic_id", "staff_id"], ["staff.clinic_id", "staff.id"]),
+        CheckConstraint("end_at > start_at", name="ck_staff_shift_valid_range"),
+    )
+
+
+class ResourceDowntime(Base):
+    __tablename__ = "resource_downtime"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    resource_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    resource_key: Mapped[str] = mapped_column(String(80), nullable=False)
+    start_at: Mapped[datetime] = mapped_column(DateTime(), nullable=False)
+    end_at: Mapped[datetime] = mapped_column(DateTime(), nullable=False)
+    reason: Mapped[str] = mapped_column(String(260), nullable=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="active")
+    actor_demo: Mapped[str] = mapped_column(String(100), nullable=False)
+    created_at: Mapped[datetime] = created_col()
+    __table_args__ = (
+        ForeignKeyConstraint(["clinic_id", "resource_id"], ["resource.clinic_id", "resource.id"]),
+        CheckConstraint("end_at > start_at", name="ck_downtime_valid_range"),
+    )
+
+
+class AppointmentConfirmation(Base):
+    __tablename__ = "appointment_confirmation"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    appointment_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    event_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    channel: Mapped[str] = mapped_column(String(32), nullable=False)
+    evidence_note: Mapped[str] = mapped_column(String(260), nullable=False)
+    actor_demo: Mapped[str] = mapped_column(String(100), nullable=False)
+    created_at: Mapped[datetime] = created_col()
+    __table_args__ = (
+        ForeignKeyConstraint(["clinic_id", "appointment_id"], ["appointment.clinic_id", "appointment.id"]),
+    )
+
+
+class ChairTurnoverChecklist(Base):
+    __tablename__ = "chair_turnover_checklist"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    chair_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    appointment_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    surface_disinfected: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    sterile_kit_verified: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    waterline_flushed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    assistant_prep_ready: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="pending")
+    notes: Mapped[str] = mapped_column(String(260), nullable=False, default="")
+    completed_by: Mapped[str | None] = mapped_column(String(100))
+    created_at: Mapped[datetime] = created_col()
+    __table_args__ = (
+        ForeignKeyConstraint(["clinic_id", "chair_id"], ["resource.clinic_id", "resource.id"]),
+        ForeignKeyConstraint(["clinic_id", "appointment_id"], ["appointment.clinic_id", "appointment.id"]),
+    )
+
+
+class CheckinQueueItem(Base):
+    __tablename__ = "checkin_queue_item"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    appointment_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    patient_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    identity_verified: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    verification_method: Mapped[str] = mapped_column(String(40), nullable=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="waiting")
+    notes: Mapped[str] = mapped_column(String(260), nullable=False, default="")
+    actor_demo: Mapped[str] = mapped_column(String(100), nullable=False)
+    created_at: Mapped[datetime] = created_col()
+    __table_args__ = (
+        ForeignKeyConstraint(["clinic_id", "appointment_id"], ["appointment.clinic_id", "appointment.id"]),
+        ForeignKeyConstraint(["clinic_id", "patient_id"], ["patient.clinic_id", "patient.id"]),
+    )
+
+
+class RecallFollowupItem(Base):
+    __tablename__ = "recall_followup_item"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    patient_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    due_date: Mapped[str] = mapped_column(String(10), nullable=False)
+    reason: Mapped[str] = mapped_column(String(300), nullable=False)
+    clinician_approved: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="open")
+    closure_evidence: Mapped[str | None] = mapped_column(String(300))
+    owner_role: Mapped[str] = mapped_column(String(32), nullable=False, default="treatment_coordinator")
+    actor_demo: Mapped[str] = mapped_column(String(100), nullable=False)
+    created_at: Mapped[datetime] = created_col()
+    __table_args__ = (
+        ForeignKeyConstraint(["clinic_id", "patient_id"], ["patient.clinic_id", "patient.id"]),
+    )
