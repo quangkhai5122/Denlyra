@@ -32,6 +32,7 @@ def migration_smoke(temp):
     command.upgrade(config, "0005_archive_and_dr")
     command.upgrade(config, "0006_inventory_fhir_and_ai_harness")
     command.upgrade(config, "0007_operations_audit_chain_and_pagination")
+    command.upgrade(config, "0008_patient_merge_portal_and_kpi_lineage")
     command.upgrade(config, "head")
     engine = create_engine(url)
     try:
@@ -44,11 +45,12 @@ def migration_smoke(temp):
         assert "stock_movement" in tables and "ai_draft_artifact" in tables and "ai_evaluation_run" in tables
         assert "staff_shift" in tables and "checkin_queue_item" in tables and "recall_followup_item" in tables
         assert "patient_merge_request" in tables and "break_glass_grant" in tables and "service_price_catalog_item" in tables
+        assert "patient_medical_risk_review" in tables and "performed_procedure_evidence" in tables and "quality_incident_report" in tables
         with engine.connect() as connection:
-            assert connection.exec_driver_sql("SELECT version_num FROM alembic_version").scalar() == "0008_patient_merge_portal_and_kpi_lineage"
+            assert connection.exec_driver_sql("SELECT version_num FROM alembic_version").scalar() == "0009_encounter_lifecycle_and_clinical_governance"
     finally:
         engine.dispose()
-    print(f"SQLite Alembic smoke PASS: {len(tables) - 1} domain tables; head 0008_patient_merge_portal_and_kpi_lineage")
+    print(f"SQLite Alembic smoke PASS: {len(tables) - 1} domain tables; head 0009_encounter_lifecycle_and_clinical_governance")
 
 
 def cli_smoke(temp):

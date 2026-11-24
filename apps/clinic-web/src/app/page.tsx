@@ -1332,6 +1332,48 @@ export default function ClinicWorkspacePage() {
                   {fhirSummary}
                 </p>
               )}
+
+              <h3>6. Rà soát Dị ứng Ba Trạng thái &amp; Cổng Đóng Lượt Khám (T017 · EMR-003/009/018)</h3>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  disabled={!selectedPatientId}
+                  onClick={async () => {
+                    setConflictMsg("");
+                    const r = await client.createMedicalRiskReview(selectedPatientId, {
+                      encounter_id: selectedEncounterId || null,
+                      drug_allergy_state: "explicit_negative",
+                      bleeding_anticoagulant_state: "explicit_negative",
+                      cardiovascular_hypertension_state: "explicit_negative",
+                      pregnancy_nursing_state: "not_applicable",
+                      source: "clinician_review_demo",
+                    });
+                    if (!r.ok) return handleApiFailure(r.status, r.detail, r.conflict);
+                    setStatusMsg(
+                      `Đã ghi nhận Rà soát Tiền sử/Dị ứng v${r.data.revision_number} (drug_allergy=${r.data.drug_allergy_state}).`,
+                    );
+                  }}
+                >
+                  Xác nhận Rà soát Dị ứng/Đông máu (Tri-State)
+                </button>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  disabled={!selectedEncounterId}
+                  onClick={async () => {
+                    setConflictMsg("");
+                    const r = await client.closeEncounterDemo(selectedEncounterId);
+                    if (!r.ok) return handleApiFailure(r.status, r.detail, r.conflict);
+                    setStatusMsg(
+                      `Đã đóng lượt khám giả lập (${r.data.status}) sau khi vượt qua bảng kiểm dị ứng & chữ ký.`,
+                    );
+                    await reloadWorkspaceData();
+                  }}
+                >
+                  Đóng Lượt Khám (Kiểm tra Cổng EMR-009)
+                </button>
+              </div>
             </section>
           </div>
         </>

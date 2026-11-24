@@ -147,6 +147,15 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
     "portal.publish": {"medical_director", "dentist"},
     "finance.catalog_manage": {"clinic_owner", "medical_director", "finance"},
     "finance.discount_approve": {"clinic_owner", "medical_director"},
+    "medical_risk.write": {"clinic_owner", "medical_director", "dentist", "assistant"},
+    "diagnosis.write": {"medical_director", "dentist"},
+    "procedure.record_performed": {"medical_director", "dentist"},
+    "encounter.close": {"medical_director", "dentist"},
+    "quality.report_create": {
+        "clinic_owner", "medical_director", "dentist", "assistant",
+        "receptionist", "treatment_coordinator", "finance",
+    },
+    "quality.report_read": {"clinic_owner", "medical_director"},
     "signed_url.create": {"clinic_owner", "medical_director", "dentist"},
     "signed_url.consume": {"clinic_owner", "medical_director", "dentist"},
 }

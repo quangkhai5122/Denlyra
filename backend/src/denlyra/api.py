@@ -23,6 +23,8 @@ from . import (
     archive_dr,
     audit_chain,
     auth,
+    clinical_lifecycle,
+    continuity_governance,
     fhir_interop,
     governance_analytics,
     inventory,
@@ -62,6 +64,7 @@ from .schemas import (
     DocumentSnapshotCreate,
     DocumentSyntheticSignRequest,
     EncounterCreate,
+    EncounterDiagnosisCreate,
     EstimateAcceptRequest,
     EstimateCreate,
     EstimateFromCatalogCreate,
@@ -69,12 +72,16 @@ from .schemas import (
     FormOfficialExportRequest,
     FormTemplateCreate,
     FormValidatePreviewRequest,
+    InstallmentScheduleCreate,
     LabCaseCreate,
     LabPartnerGrantCreate,
     LabPartnerMilestoneUpdate,
     LabReceiveRequest,
     LabRemakeCreate,
     LabStateUpdate,
+    MedicalRiskReviewCreate,
+    MilestoneChecklistCreate,
+    MilestoneEvaluateRequest,
     NoteCreate,
     NoteUpdate,
     PaperBatchCreate,
@@ -86,7 +93,9 @@ from .schemas import (
     PatientMergeCreate,
     PatientMergeReverseRequest,
     PaymentCreate,
+    PerformedProcedureCreate,
     PlanCreate,
+    PlanLifecycleTransitionCreate,
     PlanReassessmentCreate,
     PortalGrantCreate,
     PortalInstructionPublish,
@@ -97,6 +106,7 @@ from .schemas import (
     PriceCatalogCreate,
     PurchaseOrderCreate,
     PurchaseOrderReceiveRequest,
+    QualityIncidentCreate,
     RecallCloseRequest,
     RecallCreate,
     RefundCreate,
@@ -117,6 +127,7 @@ from .schemas import (
     TaskCreate,
     TaskDependenciesUpdate,
     TokenIssueRequest,
+    WaitlistCreate,
 )
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -765,9 +776,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
             .order_by(m.DentalFinding.created_at)
         ).all()
+        procs = db.scalars(
+            select(m.PerformedProcedureEvidence)
+            .where(
+                m.PerformedProcedureEvidence.clinic_id == clinic_id,
+                m.PerformedProcedureEvidence.patient_id == patient_id,
+            )
+            .order_by(m.PerformedProcedureEvidence.created_at)
+        ).all()
         return {
             "patient_id": patient_id,
             "findings": [doc(x) for x in rows],
+            "performed_procedures": [doc(p) for p in procs],
             "warning": "Demo FDI events only, not a clinical chart or diagnosis.",
         }
 
@@ -1830,6 +1850,255 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def get_kpi_lineage(context=Depends(require_perm("dashboard.read"))):
         db, clinic_id, _ = context
         return governance_analytics.compute_kpi_lineage_report(db, clinic_id)
+
+    @app.get("/api/v1/patients/{patient_id}/medical-risk-reviews")
+    def list_medical_risk_reviews(
+        patient_id: str, context=Depends(require_perm("encounter.read", audit_read=True))
+    ):
+        db, clinic_id, _ = context
+        svc.ensure(db, m.Patient, patient_id, clinic_id)
+        rows = db.scalars(
+            select(m.PatientMedicalRiskReview)
+            .where(
+                m.PatientMedicalRiskReview.clinic_id == clinic_id,
+                m.PatientMedicalRiskReview.patient_id == patient_id,
+            )
+            .order_by(m.PatientMedicalRiskReview.revision_number.desc())
+        ).all()
+        return [doc(r) for r in rows]
+
+    @app.post("/api/v1/patients/{patient_id}/medical-risk-reviews", status_code=201)
+    def post_medical_risk_review(
+        patient_id: str,
+        payload: MedicalRiskReviewCreate,
+        ctx_tuple=Depends(require_principal_perm("medical_risk.write")),
+    ):
+        db, clinic_id, actor, principal = ctx_tuple
+        return doc(
+            clinical_lifecycle.create_medical_risk_review(
+                db, clinic_id, patient_id, principal.staff_id, actor, payload
+            )
+        )
+
+    @app.get("/api/v1/encounters/{encounter_id}/closure-checklist")
+    def get_encounter_closure_checklist_endpoint(
+        encounter_id: str, context=Depends(require_perm("encounter.read"))
+    ):
+        db, clinic_id, _ = context
+        return clinical_lifecycle.get_encounter_closure_checklist(db, clinic_id, encounter_id)
+
+    @app.post("/api/v1/encounters/{encounter_id}/notify-missing-signatures")
+    def notify_missing_signatures_endpoint(
+        encounter_id: str, context=Depends(require_perm("encounter.read"))
+    ):
+        db, clinic_id, actor = context
+        return clinical_lifecycle.notify_missing_signatures(db, clinic_id, encounter_id, actor)
+
+    @app.post("/api/v1/encounters/{encounter_id}/close-demo")
+    def close_encounter_demo_endpoint(
+        encounter_id: str, context=Depends(require_perm("encounter.close"))
+    ):
+        db, clinic_id, actor = context
+        return doc(clinical_lifecycle.close_encounter_demo(db, clinic_id, encounter_id, actor))
+
+    @app.get("/api/v1/encounters/{encounter_id}/diagnoses")
+    def list_encounter_diagnoses(
+        encounter_id: str, context=Depends(require_perm("encounter.read", audit_read=True))
+    ):
+        db, clinic_id, _ = context
+        svc.ensure(db, m.Encounter, encounter_id, clinic_id)
+        rows = db.scalars(
+            select(m.EncounterDiagnosisDemo)
+            .where(
+                m.EncounterDiagnosisDemo.clinic_id == clinic_id,
+                m.EncounterDiagnosisDemo.encounter_id == encounter_id,
+            )
+            .order_by(m.EncounterDiagnosisDemo.created_at.asc())
+        ).all()
+        return [doc(r) for r in rows]
+
+    @app.post("/api/v1/encounters/{encounter_id}/diagnoses", status_code=201)
+    def add_encounter_diagnosis(
+        encounter_id: str,
+        payload: EncounterDiagnosisCreate,
+        ctx_tuple=Depends(require_principal_perm("diagnosis.write")),
+    ):
+        db, clinic_id, actor, principal = ctx_tuple
+        return doc(
+            clinical_lifecycle.record_encounter_diagnosis_demo(
+                db, clinic_id, encounter_id, principal.staff_id, actor, payload
+            )
+        )
+
+    @app.get("/api/v1/encounters/{encounter_id}/performed-procedures")
+    def list_performed_procedures(
+        encounter_id: str, context=Depends(require_perm("encounter.read", audit_read=True))
+    ):
+        db, clinic_id, _ = context
+        svc.ensure(db, m.Encounter, encounter_id, clinic_id)
+        rows = db.scalars(
+            select(m.PerformedProcedureEvidence)
+            .where(
+                m.PerformedProcedureEvidence.clinic_id == clinic_id,
+                m.PerformedProcedureEvidence.encounter_id == encounter_id,
+            )
+            .order_by(m.PerformedProcedureEvidence.created_at.asc())
+        ).all()
+        return [doc(r) for r in rows]
+
+    @app.post("/api/v1/encounters/{encounter_id}/performed-procedures", status_code=201)
+    def add_performed_procedure(
+        encounter_id: str,
+        payload: PerformedProcedureCreate,
+        ctx_tuple=Depends(require_principal_perm("procedure.record_performed")),
+    ):
+        db, clinic_id, actor, principal = ctx_tuple
+        return doc(
+            clinical_lifecycle.record_performed_procedure_evidence(
+                db, clinic_id, encounter_id, principal.staff_id, actor, payload
+            )
+        )
+
+    @app.post("/api/v1/treatment-tasks/{task_id}/milestones", status_code=201)
+    def add_task_milestone(
+        task_id: str,
+        payload: MilestoneChecklistCreate,
+        context=Depends(require_perm("plan.review")),
+    ):
+        db, clinic_id, actor = context
+        return doc(
+            continuity_governance.create_milestone_checklist(db, clinic_id, task_id, actor, payload)
+        )
+
+    @app.post("/api/v1/treatment-milestones/{milestone_id}/evaluate")
+    def evaluate_task_milestone(
+        milestone_id: str,
+        payload: MilestoneEvaluateRequest,
+        ctx_tuple=Depends(require_principal_perm("plan.review")),
+    ):
+        db, clinic_id, actor, principal = ctx_tuple
+        return doc(
+            continuity_governance.evaluate_milestone_checklist(
+                db, clinic_id, milestone_id, principal.staff_id, actor, payload
+            )
+        )
+
+    @app.get("/api/v1/treatment-plans/{plan_id}/lifecycle")
+    def list_plan_lifecycle_events(
+        plan_id: str, context=Depends(require_perm("plan.read"))
+    ):
+        db, clinic_id, _ = context
+        svc.ensure(db, m.TreatmentPlan, plan_id, clinic_id)
+        rows = db.scalars(
+            select(m.TreatmentPlanLifecycleEvent)
+            .where(
+                m.TreatmentPlanLifecycleEvent.clinic_id == clinic_id,
+                m.TreatmentPlanLifecycleEvent.plan_id == plan_id,
+            )
+            .order_by(m.TreatmentPlanLifecycleEvent.created_at.asc())
+        ).all()
+        return [doc(r) for r in rows]
+
+    @app.post("/api/v1/treatment-plans/{plan_id}/lifecycle", status_code=201)
+    def post_plan_lifecycle_event(
+        plan_id: str,
+        payload: PlanLifecycleTransitionCreate,
+        ctx_tuple=Depends(require_principal_perm("plan.review")),
+    ):
+        db, clinic_id, actor, principal = ctx_tuple
+        return doc(
+            continuity_governance.transition_plan_lifecycle(
+                db, clinic_id, plan_id, principal.staff_id, actor, payload
+            )
+        )
+
+    @app.get("/api/v1/operations/waitlist")
+    def list_waitlist_entries(context=Depends(require_perm("appointment.read"))):
+        db, clinic_id, _ = context
+        rows = db.scalars(
+            select(m.ScheduleWaitlistEntry)
+            .where(m.ScheduleWaitlistEntry.clinic_id == clinic_id)
+            .order_by(m.ScheduleWaitlistEntry.created_at.desc())
+        ).all()
+        return [doc(r) for r in rows]
+
+    @app.post("/api/v1/operations/waitlist", status_code=201)
+    def create_waitlist_endpoint(
+        payload: WaitlistCreate, context=Depends(require_perm("appointment.write"))
+    ):
+        db, clinic_id, actor = context
+        return doc(continuity_governance.create_waitlist_entry(db, clinic_id, actor, payload))
+
+    @app.post("/api/v1/operations/waitlist/{entry_id}/prepare-outreach")
+    def prepare_waitlist_outreach_endpoint(
+        entry_id: str, context=Depends(require_perm("appointment.write"))
+    ):
+        db, clinic_id, actor = context
+        return doc(continuity_governance.prepare_waitlist_outreach(db, clinic_id, entry_id, actor))
+
+    @app.post("/api/v1/operations/waitlist/{entry_id}/confirm-booking", status_code=201)
+    def confirm_waitlist_booking_endpoint(
+        entry_id: str,
+        payload: AppointmentCreate,
+        context=Depends(require_perm("appointment.write")),
+    ):
+        db, clinic_id, actor = context
+        return doc(
+            continuity_governance.confirm_waitlist_booking(db, clinic_id, entry_id, actor, payload)
+        )
+
+    @app.get("/api/v1/finance/installments")
+    def list_installment_schedules(context=Depends(require_perm("finance.read"))):
+        db, clinic_id, _ = context
+        rows = db.scalars(
+            select(m.InstallmentSchedule)
+            .where(m.InstallmentSchedule.clinic_id == clinic_id)
+            .order_by(m.InstallmentSchedule.created_at.desc())
+        ).all()
+        return [doc(r) for r in rows]
+
+    @app.post("/api/v1/finance/installments", status_code=201)
+    def create_installment_schedule_endpoint(
+        payload: InstallmentScheduleCreate,
+        context=Depends(require_perm("finance.write")),
+    ):
+        db, clinic_id, actor = context
+        return continuity_governance.create_installment_schedule(db, clinic_id, actor, payload)
+
+    @app.post("/api/v1/finance/installments/{schedule_id}/tranches/{tranche_id}/log-reminder")
+    def log_installment_reminder_endpoint(
+        schedule_id: str,
+        tranche_id: str,
+        context=Depends(require_perm("finance.write")),
+    ):
+        db, clinic_id, actor = context
+        return doc(
+            continuity_governance.log_installment_tranche_reminder(
+                db, clinic_id, schedule_id, tranche_id, actor
+            )
+        )
+
+    @app.get("/api/v1/operations/incidents")
+    def list_quality_incidents(context=Depends(require_perm("quality.report_read"))):
+        db, clinic_id, _ = context
+        rows = db.scalars(
+            select(m.QualityIncidentReport)
+            .where(m.QualityIncidentReport.clinic_id == clinic_id)
+            .order_by(m.QualityIncidentReport.created_at.desc())
+        ).all()
+        return [doc(r) for r in rows]
+
+    @app.post("/api/v1/operations/incidents", status_code=201)
+    def create_quality_incident(
+        payload: QualityIncidentCreate,
+        ctx_tuple=Depends(require_principal_perm("quality.report_create")),
+    ):
+        db, clinic_id, actor, principal = ctx_tuple
+        return doc(
+            continuity_governance.create_quality_incident_report(
+                db, clinic_id, principal.staff_id, actor, payload
+            )
+        )
 
     @app.get("/api/v1/audit-events/page")
     def list_audit_events_paginated(

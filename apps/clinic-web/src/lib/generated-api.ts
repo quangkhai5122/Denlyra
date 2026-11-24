@@ -175,6 +175,13 @@ export interface EncounterCreate {
   practitioner_id: string;
 }
 
+export interface EncounterDiagnosisCreate {
+  tooth_code?: string | null;
+  diagnosis_code_demo: string;
+  summary_vi: string;
+  authoring_source?: string;
+}
+
 export interface EstimateAcceptRequest {
   accepted_by: string;
 }
@@ -239,6 +246,17 @@ export interface HTTPValidationError {
   detail?: ValidationError[];
 }
 
+export interface InstallmentScheduleCreate {
+  estimate_id: string;
+  consent_id: string;
+  tranches: InstallmentTrancheInput[];
+}
+
+export interface InstallmentTrancheInput {
+  due_date: string;
+  amount_vnd: number;
+}
+
 export interface LabCaseCreate {
   patient_id: string;
   title: string;
@@ -269,6 +287,26 @@ export interface LabRemakeCreate {
 
 export interface LabStateUpdate {
   next_status: string;
+}
+
+export interface MedicalRiskReviewCreate {
+  encounter_id?: string | null;
+  drug_allergy_state?: "present" | "explicit_negative" | "unknown" | "not_applicable" | "unanswered";
+  drug_allergy_detail?: string | null;
+  bleeding_anticoagulant_state?: "present" | "explicit_negative" | "unknown" | "not_applicable" | "unanswered";
+  cardiovascular_hypertension_state?: "present" | "explicit_negative" | "unknown" | "not_applicable" | "unanswered";
+  pregnancy_nursing_state?: "present" | "explicit_negative" | "unknown" | "not_applicable" | "unanswered";
+  source?: "patient_interview_demo" | "clinician_review_demo" | "legacy_record_demo";
+}
+
+export interface MilestoneChecklistCreate {
+  title_vi: string;
+  criteria_items: string[];
+}
+
+export interface MilestoneEvaluateRequest {
+  all_criteria_met: boolean;
+  clinician_override_reason?: string | null;
 }
 
 export interface NoteCreate {
@@ -335,9 +373,25 @@ export interface PaymentCreate {
   idempotency_key?: string | null;
 }
 
+export interface PerformedProcedureCreate {
+  plan_task_id?: string | null;
+  tooth_code: string;
+  surface: string;
+  procedure_code_demo: string;
+  description_vi: string;
+  clinical_evidence_note: string;
+  authoring_source?: string;
+}
+
 export interface PlanCreate {
   patient_id: string;
   title: string;
+}
+
+export interface PlanLifecycleTransitionCreate {
+  action: "pause" | "resume" | "cancel" | "terminate";
+  reason: string;
+  clinical_handoff_note?: string;
 }
 
 export interface PlanReassessmentCreate {
@@ -404,6 +458,15 @@ export interface PurchaseOrderReceiveRequest {
   delivered_qty: number;
   inspected_accepted_qty: number;
   quarantined?: boolean;
+}
+
+export interface QualityIncidentCreate {
+  category: "sterilization_breach" | "near_miss" | "equipment_hazard" | "medication_label" | "workflow_delay";
+  severity: "low" | "moderate" | "high" | "critical";
+  summary: string;
+  evidence_note: string;
+  encounter_id?: string | null;
+  source_kind?: string;
 }
 
 export interface RecallCloseRequest {
@@ -546,6 +609,13 @@ export interface ValidationError {
   ctx?: Record<string, unknown>;
 }
 
+export interface WaitlistCreate {
+  patient_id: string;
+  preferred_practitioner_id?: string | null;
+  preferred_date_window: string;
+  service_note_minimized: string;
+}
+
 export const OPENAPI_OPERATIONS = [
   "GET /",
   "POST /api/v1/ai/drafts/dictation-extract",
@@ -602,10 +672,17 @@ export const OPENAPI_OPERATIONS = [
   "GET /api/v1/demo/context",
   "GET /api/v1/encounters",
   "POST /api/v1/encounters",
+  "POST /api/v1/encounters/{encounter_id}/close-demo",
+  "GET /api/v1/encounters/{encounter_id}/closure-checklist",
+  "GET /api/v1/encounters/{encounter_id}/diagnoses",
+  "POST /api/v1/encounters/{encounter_id}/diagnoses",
   "GET /api/v1/encounters/{encounter_id}/findings",
   "POST /api/v1/encounters/{encounter_id}/findings",
   "GET /api/v1/encounters/{encounter_id}/notes",
   "POST /api/v1/encounters/{encounter_id}/notes",
+  "POST /api/v1/encounters/{encounter_id}/notify-missing-signatures",
+  "GET /api/v1/encounters/{encounter_id}/performed-procedures",
+  "POST /api/v1/encounters/{encounter_id}/performed-procedures",
   "GET /api/v1/encounters/{encounter_id}/snapshots",
   "POST /api/v1/finance/allocations",
   "GET /api/v1/finance/charges",
@@ -618,6 +695,9 @@ export const OPENAPI_OPERATIONS = [
   "POST /api/v1/finance/estimates/{estimate_id}/accept",
   "POST /api/v1/finance/estimates/{estimate_id}/discounts",
   "GET /api/v1/finance/estimates/{estimate_id}/lines",
+  "GET /api/v1/finance/installments",
+  "POST /api/v1/finance/installments",
+  "POST /api/v1/finance/installments/{schedule_id}/tranches/{tranche_id}/log-reminder",
   "GET /api/v1/finance/payments",
   "POST /api/v1/finance/payments",
   "POST /api/v1/finance/payments/{payment_id}/refunds",
@@ -663,6 +743,8 @@ export const OPENAPI_OPERATIONS = [
   "GET /api/v1/operations/downtimes",
   "POST /api/v1/operations/downtimes",
   "POST /api/v1/operations/downtimes/{downtime_id}/resolve",
+  "GET /api/v1/operations/incidents",
+  "POST /api/v1/operations/incidents",
   "GET /api/v1/operations/recalls",
   "POST /api/v1/operations/recalls",
   "POST /api/v1/operations/recalls/{recall_id}/close",
@@ -671,6 +753,10 @@ export const OPENAPI_OPERATIONS = [
   "GET /api/v1/operations/turnovers",
   "POST /api/v1/operations/turnovers",
   "POST /api/v1/operations/turnovers/{checklist_id}/complete",
+  "GET /api/v1/operations/waitlist",
+  "POST /api/v1/operations/waitlist",
+  "POST /api/v1/operations/waitlist/{entry_id}/confirm-booking",
+  "POST /api/v1/operations/waitlist/{entry_id}/prepare-outreach",
   "POST /api/v1/patient-portal/appointments/{appointment_id}/confirm",
   "POST /api/v1/patient-portal/appointments/{appointment_id}/reschedule-requests",
   "POST /api/v1/patient-portal/intake-forms",
@@ -684,6 +770,8 @@ export const OPENAPI_OPERATIONS = [
   "GET /api/v1/patients/page",
   "GET /api/v1/patients/{patient_id}",
   "GET /api/v1/patients/{patient_id}/consents",
+  "GET /api/v1/patients/{patient_id}/medical-risk-reviews",
+  "POST /api/v1/patients/{patient_id}/medical-risk-reviews",
   "GET /api/v1/patients/{patient_id}/odontogram",
   "GET /api/v1/patients/{patient_id}/revenue-account",
   "GET /api/v1/patients/{patient_id}/unified-summary",
@@ -698,10 +786,13 @@ export const OPENAPI_OPERATIONS = [
   "GET /api/v1/signed-download/{grant_token}",
   "POST /api/v1/staff",
   "POST /api/v1/staff/{staff_id}/deactivate",
+  "POST /api/v1/treatment-milestones/{milestone_id}/evaluate",
   "GET /api/v1/treatment-plans",
   "POST /api/v1/treatment-plans",
   "GET /api/v1/treatment-plans/{plan_id}",
   "POST /api/v1/treatment-plans/{plan_id}/demo-review",
+  "GET /api/v1/treatment-plans/{plan_id}/lifecycle",
+  "POST /api/v1/treatment-plans/{plan_id}/lifecycle",
   "POST /api/v1/treatment-plans/{plan_id}/reassessments",
   "POST /api/v1/treatment-plans/{plan_id}/tasks",
   "GET /api/v1/treatment-plans/{plan_id}/timeline",
@@ -709,6 +800,7 @@ export const OPENAPI_OPERATIONS = [
   "POST /api/v1/treatment-tasks/{task_id}/demo-complete",
   "POST /api/v1/treatment-tasks/{task_id}/dependencies",
   "POST /api/v1/treatment-tasks/{task_id}/links",
+  "POST /api/v1/treatment-tasks/{task_id}/milestones",
   "GET /health",
 ] as const;
 
@@ -1083,5 +1175,17 @@ export class DenlyraApiClient {
   }
   activateBreakGlass(payload: BreakGlassCreateRequest) {
     return this.request<{ id: string; status: string; review_status: string; expires_at: string }>("POST", "auth/break-glass", payload);
+  }
+  createMedicalRiskReview(patientId: string, payload: MedicalRiskReviewCreate) {
+    return this.request<{ id: string; revision_number: number; drug_allergy_state: string; high_risk_banner_active: boolean }>("POST", `patients/${encodeURIComponent(patientId)}/medical-risk-reviews`, payload);
+  }
+  getEncounterClosureChecklist(encounterId: string) {
+    return this.request<{ encounter_id: string; ready_to_close: boolean; blocking_reasons: string[]; unsigned_snapshot_ids: string[] }>("GET", `encounters/${encodeURIComponent(encounterId)}/closure-checklist`);
+  }
+  closeEncounterDemo(encounterId: string) {
+    return this.request<{ id: string; status: string }>("POST", `encounters/${encodeURIComponent(encounterId)}/close-demo`, {});
+  }
+  createQualityIncident(payload: QualityIncidentCreate) {
+    return this.request<{ id: string; status: string; severity: string }>("POST", "operations/incidents", payload);
   }
 }

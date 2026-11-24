@@ -1155,3 +1155,182 @@ class DiscountApprovalRequest(Base):
         ),
         ForeignKeyConstraint(["clinic_id", "patient_id"], ["patient.clinic_id", "patient.id"]),
     )
+
+
+class PatientMedicalRiskReview(Base):
+    __tablename__ = "patient_medical_risk_review"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    patient_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    encounter_id: Mapped[str | None] = mapped_column(String(36))
+    revision_number: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    drug_allergy_state: Mapped[str] = mapped_column(
+        String(24), nullable=False, default="unanswered"
+    )
+    drug_allergy_detail: Mapped[str | None] = mapped_column(String(300))
+    bleeding_anticoagulant_state: Mapped[str] = mapped_column(
+        String(24), nullable=False, default="unanswered"
+    )
+    cardiovascular_hypertension_state: Mapped[str] = mapped_column(
+        String(24), nullable=False, default="unanswered"
+    )
+    pregnancy_nursing_state: Mapped[str] = mapped_column(
+        String(24), nullable=False, default="unanswered"
+    )
+    high_risk_banner_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+    source: Mapped[str] = mapped_column(String(40), nullable=False)
+    reviewed_by_staff_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    actor_demo: Mapped[str] = mapped_column(String(100), nullable=False)
+    created_at: Mapped[datetime] = created_col()
+    __table_args__ = (
+        UniqueConstraint(
+            "clinic_id",
+            "patient_id",
+            "revision_number",
+            name="uq_med_risk_patient_revision",
+        ),
+        ForeignKeyConstraint(["clinic_id", "patient_id"], ["patient.clinic_id", "patient.id"]),
+    )
+
+
+class EncounterDiagnosisDemo(Base):
+    __tablename__ = "encounter_diagnosis_demo"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    encounter_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    patient_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    tooth_code: Mapped[str | None] = mapped_column(String(2))
+    code_system_demo: Mapped[str] = mapped_column(
+        String(40), nullable=False, default="SYNTHETIC-DENTAL-DX-V1"
+    )
+    diagnosis_code_demo: Mapped[str] = mapped_column(String(60), nullable=False)
+    summary_vi: Mapped[str] = mapped_column(String(300), nullable=False)
+    author_staff_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(24), nullable=False, default="recorded_demo_not_certified"
+    )
+    created_at: Mapped[datetime] = created_col()
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["clinic_id", "encounter_id"], ["encounter.clinic_id", "encounter.id"]
+        ),
+        ForeignKeyConstraint(["clinic_id", "patient_id"], ["patient.clinic_id", "patient.id"]),
+    )
+
+
+class PerformedProcedureEvidence(Base):
+    __tablename__ = "performed_procedure_evidence"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    encounter_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    patient_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    plan_task_id: Mapped[str | None] = mapped_column(String(36))
+    tooth_code: Mapped[str] = mapped_column(String(2), nullable=False)
+    surface: Mapped[str] = mapped_column(String(8), nullable=False)
+    procedure_code_demo: Mapped[str] = mapped_column(String(60), nullable=False)
+    description_vi: Mapped[str] = mapped_column(String(300), nullable=False)
+    clinical_evidence_note: Mapped[str] = mapped_column(String(300), nullable=False)
+    performed_by_staff_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    created_at: Mapped[datetime] = created_col()
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["clinic_id", "encounter_id"], ["encounter.clinic_id", "encounter.id"]
+        ),
+        ForeignKeyConstraint(["clinic_id", "patient_id"], ["patient.clinic_id", "patient.id"]),
+    )
+
+
+class PlanMilestoneChecklist(Base):
+    __tablename__ = "plan_milestone_checklist"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    plan_id: Mapped[str] = mapped_column(ForeignKey("treatment_plan.id"), nullable=False)
+    task_id: Mapped[str] = mapped_column(ForeignKey("plan_task.id"), nullable=False)
+    title_vi: Mapped[str] = mapped_column(String(180), nullable=False)
+    criteria_items_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending")
+    clinician_override_reason: Mapped[str | None] = mapped_column(String(300))
+    evaluated_by_staff_id: Mapped[str | None] = mapped_column(String(36))
+    evaluated_at: Mapped[datetime | None] = mapped_column(DateTime())
+    created_at: Mapped[datetime] = created_col()
+
+
+class TreatmentPlanLifecycleEvent(Base):
+    __tablename__ = "treatment_plan_lifecycle_event"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    plan_id: Mapped[str] = mapped_column(ForeignKey("treatment_plan.id"), nullable=False)
+    action: Mapped[str] = mapped_column(String(24), nullable=False)
+    resulting_state: Mapped[str] = mapped_column(String(24), nullable=False)
+    reason: Mapped[str] = mapped_column(String(300), nullable=False)
+    clinical_handoff_note: Mapped[str] = mapped_column(String(300), nullable=False, default="")
+    actor_staff_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    created_at: Mapped[datetime] = created_col()
+
+
+class ScheduleWaitlistEntry(Base):
+    __tablename__ = "schedule_waitlist_entry"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    patient_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    preferred_practitioner_id: Mapped[str | None] = mapped_column(String(36))
+    preferred_date_window: Mapped[str] = mapped_column(String(60), nullable=False)
+    service_note_minimized: Mapped[str] = mapped_column(String(200), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="waiting")
+    booked_appointment_id: Mapped[str | None] = mapped_column(String(36))
+    actor_demo: Mapped[str] = mapped_column(String(100), nullable=False)
+    created_at: Mapped[datetime] = created_col()
+    __table_args__ = (
+        ForeignKeyConstraint(["clinic_id", "patient_id"], ["patient.clinic_id", "patient.id"]),
+    )
+
+
+class InstallmentSchedule(Base):
+    __tablename__ = "installment_schedule"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    patient_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    estimate_id: Mapped[str] = mapped_column(ForeignKey("estimate_version.id"), nullable=False)
+    consent_id: Mapped[str] = mapped_column(ForeignKey("consent_record.id"), nullable=False)
+    total_amount_vnd: Mapped[int] = mapped_column(Integer, nullable=False)
+    auto_charge_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="active")
+    actor_demo: Mapped[str] = mapped_column(String(100), nullable=False)
+    created_at: Mapped[datetime] = created_col()
+    __table_args__ = (
+        CheckConstraint("total_amount_vnd > 0", name="ck_installment_total_positive"),
+        CheckConstraint("auto_charge_enabled = 0", name="ck_installment_no_autocharge"),
+        ForeignKeyConstraint(["clinic_id", "patient_id"], ["patient.clinic_id", "patient.id"]),
+    )
+
+
+class InstallmentTranche(Base):
+    __tablename__ = "installment_tranche"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    schedule_id: Mapped[str] = mapped_column(
+        ForeignKey("installment_schedule.id"), nullable=False
+    )
+    sequence_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    due_date: Mapped[str] = mapped_column(String(10), nullable=False)
+    amount_vnd: Mapped[int] = mapped_column(Integer, nullable=False)
+    reminder_status: Mapped[str] = mapped_column(String(24), nullable=False, default="none")
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="scheduled")
+    created_at: Mapped[datetime] = created_col()
+    __table_args__ = (CheckConstraint("amount_vnd > 0", name="ck_tranche_amount_positive"),)
+
+
+class QualityIncidentReport(Base):
+    __tablename__ = "quality_incident_report"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    encounter_id: Mapped[str | None] = mapped_column(String(36))
+    category: Mapped[str] = mapped_column(String(40), nullable=False)
+    severity: Mapped[str] = mapped_column(String(20), nullable=False)
+    summary: Mapped[str] = mapped_column(String(300), nullable=False)
+    evidence_note: Mapped[str] = mapped_column(String(300), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="open")
+    reporter_staff_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    created_at: Mapped[datetime] = created_col()

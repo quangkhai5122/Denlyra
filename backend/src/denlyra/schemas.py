@@ -623,3 +623,115 @@ class DiscountRequestCreate(BaseModel):
 class DiscountDecisionRequest(BaseModel):
     approve: bool
     decision_note: str = Field(min_length=3, max_length=300)
+
+
+TriStateRisk = Literal[
+    "present", "explicit_negative", "unknown", "not_applicable", "unanswered"
+]
+
+
+def _check_fdi_code(code: str) -> None:
+    if len(code) != 2 or not code.isdigit():
+        raise ValueError("FDI tooth_code must contain exactly two digits")
+    a, b = int(code[0]), int(code[1])
+    if not ((1 <= a <= 4 and 1 <= b <= 8) or (5 <= a <= 8 and 1 <= b <= 5)):
+        raise ValueError("Invalid FDI tooth code")
+
+
+class MedicalRiskReviewCreate(BaseModel):
+    encounter_id: str | None = None
+    drug_allergy_state: TriStateRisk = "unanswered"
+    drug_allergy_detail: str | None = Field(default=None, max_length=300)
+    bleeding_anticoagulant_state: TriStateRisk = "unanswered"
+    cardiovascular_hypertension_state: TriStateRisk = "unanswered"
+    pregnancy_nursing_state: TriStateRisk = "unanswered"
+    source: Literal[
+        "patient_interview_demo", "clinician_review_demo", "legacy_record_demo"
+    ] = "clinician_review_demo"
+
+    @model_validator(mode="after")
+    def check_present_detail(self):
+        if self.drug_allergy_state == "present" and (
+            not self.drug_allergy_detail or not self.drug_allergy_detail.strip()
+        ):
+            raise ValueError(
+                "drug_allergy_detail is required when drug_allergy_state is 'present' (EMR-003)"
+            )
+        return self
+
+
+class EncounterDiagnosisCreate(BaseModel):
+    tooth_code: str | None = None
+    diagnosis_code_demo: str = Field(min_length=2, max_length=60)
+    summary_vi: str = Field(min_length=3, max_length=300)
+    authoring_source: Literal["clinician_manual"] = "clinician_manual"
+
+    @model_validator(mode="after")
+    def check_optional_tooth(self):
+        if self.tooth_code is not None:
+            _check_fdi_code(self.tooth_code)
+        return self
+
+
+class PerformedProcedureCreate(BaseModel):
+    plan_task_id: str | None = None
+    tooth_code: str = Field(min_length=2, max_length=2)
+    surface: str = Field(min_length=1, max_length=8)
+    procedure_code_demo: str = Field(min_length=2, max_length=60)
+    description_vi: str = Field(min_length=3, max_length=300)
+    clinical_evidence_note: str = Field(min_length=3, max_length=300)
+    authoring_source: Literal["clinician_manual"] = "clinician_manual"
+
+    @model_validator(mode="after")
+    def check_tooth(self):
+        _check_fdi_code(self.tooth_code)
+        return self
+
+
+class MilestoneChecklistCreate(BaseModel):
+    title_vi: str = Field(min_length=3, max_length=180)
+    criteria_items: list[str] = Field(min_length=1, max_length=20)
+
+
+class MilestoneEvaluateRequest(BaseModel):
+    all_criteria_met: bool
+    clinician_override_reason: str | None = Field(default=None, max_length=300)
+
+
+class PlanLifecycleTransitionCreate(BaseModel):
+    action: Literal["pause", "resume", "cancel", "terminate"]
+    reason: str = Field(min_length=5, max_length=300)
+    clinical_handoff_note: str = Field(default="", max_length=300)
+
+
+class WaitlistCreate(BaseModel):
+    patient_id: str
+    preferred_practitioner_id: str | None = None
+    preferred_date_window: str = Field(min_length=3, max_length=60)
+    service_note_minimized: str = Field(min_length=3, max_length=200)
+
+
+class InstallmentTrancheInput(BaseModel):
+    due_date: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
+    amount_vnd: StrictInt = Field(gt=0)
+
+
+class InstallmentScheduleCreate(BaseModel):
+    estimate_id: str
+    consent_id: str
+    tranches: list[InstallmentTrancheInput] = Field(min_length=1, max_length=36)
+
+
+class QualityIncidentCreate(BaseModel):
+    category: Literal[
+        "sterilization_breach",
+        "near_miss",
+        "equipment_hazard",
+        "medication_label",
+        "workflow_delay",
+    ]
+    severity: Literal["low", "moderate", "high", "critical"]
+    summary: str = Field(min_length=5, max_length=300)
+    evidence_note: str = Field(min_length=3, max_length=300)
+    encounter_id: str | None = None
+    source_kind: Literal["staff_reported"] = "staff_reported"

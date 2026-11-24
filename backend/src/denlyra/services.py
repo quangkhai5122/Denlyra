@@ -529,7 +529,12 @@ def create_note(
     actor: str,
     parent_note_id: str | None = None,
 ):
-    ensure(db, m.Encounter, encounter_id, clinic_id)
+    enc = ensure(db, m.Encounter, encounter_id, clinic_id)
+    if enc.status != "in_progress" and parent_note_id is None:
+        raise HTTPException(
+            409,
+            "Encounter is closed; create a linked addendum on a locked note instead (EMR-009)",
+        )
     if parent_note_id:
         original = ensure(db, m.ClinicalNote, parent_note_id, clinic_id)
         if original.encounter_id != encounter_id or original.status != "demo_locked":
@@ -679,8 +684,25 @@ def _validate_acyclic_dependencies(
             dfs(node)
 
 
+def _assert_plan_active_lifecycle(db: Session, clinic_id: str, plan_id: str) -> None:
+    events = db.scalars(
+        select(m.TreatmentPlanLifecycleEvent)
+        .where(
+            m.TreatmentPlanLifecycleEvent.clinic_id == clinic_id,
+            m.TreatmentPlanLifecycleEvent.plan_id == plan_id,
+        )
+        .order_by(m.TreatmentPlanLifecycleEvent.created_at.asc())
+    ).all()
+    if events and events[-1].resulting_state in {"paused", "cancelled", "terminated"}:
+        raise HTTPException(
+            409,
+            f"Treatment plan is currently '{events[-1].resulting_state}'; cannot progress or add tasks (TRT-014)",
+        )
+
+
 def add_task(db: Session, clinic_id: str, plan_id: str, data: TaskCreate, actor: str):
     plan, version = get_plan_version(db, clinic_id, plan_id)
+    _assert_plan_active_lifecycle(db, clinic_id, plan.id)
     if version.status != "draft":
         raise HTTPException(409, "Reviewed plan version is immutable; create a new version")
     dep_ids: list[str] = []
@@ -1068,6 +1090,15 @@ def _task_blocked_reasons(db: Session, task: m.PlanTask) -> list[str]:
         lab = db.get(m.LabCase, lnk.target_id)
         if lab is None or lab.status != "verified":
             reasons.append("lab_not_verified")
+
+    pending_ms = db.scalars(
+        select(m.PlanMilestoneChecklist).where(
+            m.PlanMilestoneChecklist.task_id == task.id,
+            m.PlanMilestoneChecklist.status == "pending",
+        )
+    ).first()
+    if pending_ms is not None:
+        reasons.append("milestone_checklist_pending")
     return reasons
 
 
@@ -1077,6 +1108,7 @@ def complete_task_demo(db: Session, clinic_id: str, task_id: str, actor: str):
         raise HTTPException(404, "Unknown task")
     version = db.get(m.PlanVersion, task.plan_version_id)
     plan = ensure(db, m.TreatmentPlan, version.plan_id, clinic_id)
+    _assert_plan_active_lifecycle(db, clinic_id, plan.id)
     if version.number != plan.current_version or version.status != "demo_reviewed":
         raise HTTPException(409, "Only the current demo-reviewed version can be progressed")
     if task.status == "completed":
