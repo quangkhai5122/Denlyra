@@ -33,8 +33,10 @@ from . import (
     models as m,
     odontogram_referrals_export,
     operations,
+    ops_security_governance,
     org_crm_ops_assistant,
     patient_portal,
+    portal_access_recovery_hr,
     services as svc,
 )
 from .config import Settings
@@ -156,6 +158,21 @@ from .schemas import (
     ScheduleOptimizerAcceptRequest,
     ScheduleOptimizerProposeRequest,
     StaffAttendanceCreate,
+    CancellationRecoveryRequest,
+    ClinicOnboardingConfigCreate,
+    PatientAccessRequestCreate,
+    PortalSupportMessageCreate,
+    PortalSupportReplyRequest,
+    PortalUploadCreate,
+    PortalUploadReviewRequest,
+    RedactedTelemetryCreate,
+    SecurityIncidentCreate,
+    SecurityIncidentTransitionRequest,
+    StaffCompetencyUpsert,
+    StaffCompetencyValidateRequest,
+    SupplyChainVerifyRequest,
+    SupportConsentGrantCreate,
+    SupportDiagnosticExportRequest,
 )
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -2673,6 +2690,289 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 db, clinic_id, principal.staff_id, actor, payload
             )
         )
+
+    @app.get("/api/v1/ops/telemetry-events")
+    def list_redacted_telemetry_endpoint(context=Depends(require_perm("audit.read"))):
+        db, clinic_id, _ = context
+        rows = db.scalars(
+            select(m.RedactedTelemetryEvent)
+            .where(m.RedactedTelemetryEvent.clinic_id == clinic_id)
+            .order_by(m.RedactedTelemetryEvent.created_at.desc())
+        ).all()
+        return [doc(r) for r in rows]
+
+    @app.post("/api/v1/ops/telemetry-events", status_code=201)
+    def emit_redacted_telemetry_endpoint(
+        payload: RedactedTelemetryCreate,
+        context=Depends(require_perm("operations.read")),
+    ):
+        db, clinic_id, actor = context
+        return doc(
+            ops_security_governance.emit_redacted_telemetry_event(
+                db, clinic_id, actor, payload
+            )
+        )
+
+    @app.get("/api/v1/ops/onboarding-config")
+    def list_clinic_onboarding_config_endpoint(
+        context=Depends(require_perm("staff.manage")),
+    ):
+        db, clinic_id, _ = context
+        rows = db.scalars(
+            select(m.ClinicOnboardingConfig)
+            .where(m.ClinicOnboardingConfig.clinic_id == clinic_id)
+            .order_by(m.ClinicOnboardingConfig.version_number.desc())
+        ).all()
+        return [doc(r) for r in rows]
+
+    @app.post("/api/v1/ops/onboarding-config", status_code=201)
+    def configure_clinic_onboarding_endpoint(
+        payload: ClinicOnboardingConfigCreate,
+        ctx_tuple=Depends(require_principal_perm("staff.manage")),
+    ):
+        db, clinic_id, actor, principal = ctx_tuple
+        return doc(
+            ops_security_governance.configure_clinic_onboarding(
+                db, clinic_id, principal.staff_id, actor, payload
+            )
+        )
+
+    @app.post("/api/v1/ops/support/grants", status_code=201)
+    def create_support_grant_endpoint(
+        payload: SupportConsentGrantCreate,
+        ctx_tuple=Depends(require_principal_perm("staff.manage")),
+    ):
+        db, clinic_id, actor, principal = ctx_tuple
+        return doc(
+            ops_security_governance.create_support_consent_grant(
+                db, clinic_id, principal.staff_id, actor, payload
+            )
+        )
+
+    @app.post("/api/v1/ops/support/grants/{grant_id}/revoke")
+    def revoke_support_grant_endpoint(
+        grant_id: str, context=Depends(require_perm("staff.manage"))
+    ):
+        db, clinic_id, actor = context
+        return doc(
+            ops_security_governance.revoke_support_consent_grant(
+                db, clinic_id, grant_id, actor
+            )
+        )
+
+    @app.post("/api/v1/ops/support/diagnostic-export", status_code=201)
+    def export_support_diagnostics_endpoint(
+        payload: SupportDiagnosticExportRequest,
+        context=Depends(require_perm("staff.manage")),
+    ):
+        db, clinic_id, actor = context
+        return doc(
+            ops_security_governance.export_support_diagnostic_bundle(
+                db, clinic_id, actor, payload
+            )
+        )
+
+    @app.get("/api/v1/security/incidents")
+    def list_security_incidents_endpoint(context=Depends(require_perm("staff.manage"))):
+        db, clinic_id, _ = context
+        rows = db.scalars(
+            select(m.SecurityIncidentCase)
+            .where(m.SecurityIncidentCase.clinic_id == clinic_id)
+            .order_by(m.SecurityIncidentCase.created_at.desc())
+        ).all()
+        return [doc(r) for r in rows]
+
+    @app.post("/api/v1/security/incidents", status_code=201)
+    def open_security_incident_endpoint(
+        payload: SecurityIncidentCreate,
+        ctx_tuple=Depends(require_principal_perm("staff.manage")),
+    ):
+        db, clinic_id, actor, principal = ctx_tuple
+        return doc(
+            ops_security_governance.open_security_incident_case(
+                db, clinic_id, principal.staff_id, actor, payload
+            )
+        )
+
+    @app.post("/api/v1/security/incidents/{incident_id}/transition")
+    def transition_security_incident_endpoint(
+        incident_id: str,
+        payload: SecurityIncidentTransitionRequest,
+        ctx_tuple=Depends(require_principal_perm("staff.manage")),
+    ):
+        db, clinic_id, actor, principal = ctx_tuple
+        return doc(
+            ops_security_governance.transition_security_incident_case(
+                db, clinic_id, incident_id, principal.staff_id, actor, payload
+            )
+        )
+
+    @app.post("/api/v1/security/supply-chain/verify", status_code=201)
+    def verify_supply_chain_endpoint(
+        payload: SupplyChainVerifyRequest,
+        ctx_tuple=Depends(require_principal_perm("staff.manage")),
+    ):
+        db, clinic_id, actor, principal = ctx_tuple
+        return doc(
+            ops_security_governance.verify_supply_chain_sbom(
+                db,
+                clinic_id,
+                principal.staff_id,
+                actor,
+                cfg.auth_secret,
+                payload,
+            )
+        )
+
+    @app.get("/api/v1/patients/{patient_id}/access-requests")
+    def list_patient_access_requests_endpoint(
+        patient_id: str, context=Depends(require_perm("patient.read"))
+    ):
+        db, clinic_id, _ = context
+        svc.ensure(db, m.Patient, patient_id, clinic_id)
+        rows = db.scalars(
+            select(m.PatientAccessRequest)
+            .where(
+                m.PatientAccessRequest.clinic_id == clinic_id,
+                m.PatientAccessRequest.patient_id == patient_id,
+            )
+            .order_by(m.PatientAccessRequest.created_at.desc())
+        ).all()
+        return [doc(r) for r in rows]
+
+    @app.post("/api/v1/patients/{patient_id}/access-requests", status_code=201)
+    def create_patient_access_request_endpoint(
+        patient_id: str,
+        payload: PatientAccessRequestCreate,
+        ctx_tuple=Depends(require_principal_perm("consent.write")),
+    ):
+        db, clinic_id, actor, principal = ctx_tuple
+        return doc(
+            portal_access_recovery_hr.handle_patient_access_request(
+                db, clinic_id, patient_id, principal.staff_id, actor, payload
+            )
+        )
+
+    @app.post(
+        "/api/v1/scheduling/appointments/{appointment_id}/cancellation-recovery",
+        status_code=201,
+    )
+    def suggest_cancellation_recovery_endpoint(
+        appointment_id: str,
+        payload: CancellationRecoveryRequest,
+        context=Depends(require_perm("appointment.write")),
+    ):
+        db, clinic_id, actor = context
+        return portal_access_recovery_hr.suggest_cancellation_slot_recovery(
+            db, clinic_id, appointment_id, actor, payload
+        )
+
+    @app.post("/api/v1/patient-portal/uploads", status_code=201)
+    def patient_portal_upload_endpoint(
+        payload: PortalUploadCreate,
+        db: Session = Depends(get_db),
+        authorization: str | None = Header(None),
+    ):
+        portal = patient_portal.resolve_portal_principal(db, authorization, cfg.auth_secret)
+        return doc(
+            portal_access_recovery_hr.upload_portal_quarantined_file(db, portal, payload)
+        )
+
+    @app.get("/api/v1/portal/uploads")
+    def list_portal_uploads_endpoint(context=Depends(require_perm("referral.intake"))):
+        db, clinic_id, _ = context
+        rows = db.scalars(
+            select(m.PortalQuarantinedUpload)
+            .where(m.PortalQuarantinedUpload.clinic_id == clinic_id)
+            .order_by(m.PortalQuarantinedUpload.created_at.desc())
+        ).all()
+        return [doc(r) for r in rows]
+
+    @app.post("/api/v1/portal/uploads/{upload_id}/review")
+    def review_portal_upload_endpoint(
+        upload_id: str,
+        payload: PortalUploadReviewRequest,
+        ctx_tuple=Depends(require_principal_perm("referral.review")),
+    ):
+        db, clinic_id, actor, principal = ctx_tuple
+        return doc(
+            portal_access_recovery_hr.review_portal_quarantined_upload(
+                db, clinic_id, upload_id, principal.staff_id, actor, payload
+            )
+        )
+
+    @app.post("/api/v1/patient-portal/support-messages", status_code=201)
+    def patient_portal_support_message_endpoint(
+        payload: PortalSupportMessageCreate,
+        db: Session = Depends(get_db),
+        authorization: str | None = Header(None),
+    ):
+        portal = patient_portal.resolve_portal_principal(db, authorization, cfg.auth_secret)
+        return doc(
+            portal_access_recovery_hr.create_portal_support_message(db, portal, payload)
+        )
+
+    @app.get("/api/v1/portal/support-messages")
+    def list_portal_support_messages_endpoint(
+        context=Depends(require_perm("handoff.read")),
+    ):
+        db, clinic_id, _ = context
+        rows = db.scalars(
+            select(m.PortalSupportMessage)
+            .where(m.PortalSupportMessage.clinic_id == clinic_id)
+            .order_by(m.PortalSupportMessage.created_at.desc())
+        ).all()
+        return [doc(r) for r in rows]
+
+    @app.post("/api/v1/portal/support-messages/{message_id}/reply")
+    def reply_portal_support_message_endpoint(
+        message_id: str,
+        payload: PortalSupportReplyRequest,
+        ctx_tuple=Depends(require_principal_perm("handoff.write")),
+    ):
+        db, clinic_id, actor, principal = ctx_tuple
+        return doc(
+            portal_access_recovery_hr.reply_portal_support_message(
+                db, clinic_id, message_id, principal.staff_id, actor, payload
+            )
+        )
+
+    @app.get("/api/v1/hr/competencies")
+    def list_staff_competencies_endpoint(context=Depends(require_perm("operations.read"))):
+        db, clinic_id, _ = context
+        rows = db.scalars(
+            select(m.StaffCompetencyRecord)
+            .where(m.StaffCompetencyRecord.clinic_id == clinic_id)
+            .order_by(m.StaffCompetencyRecord.created_at.desc())
+        ).all()
+        return [doc(r) for r in rows]
+
+    @app.post("/api/v1/hr/competencies", status_code=201)
+    def upsert_staff_competency_endpoint(
+        payload: StaffCompetencyUpsert,
+        ctx_tuple=Depends(require_principal_perm("staff.manage")),
+    ):
+        db, clinic_id, actor, principal = ctx_tuple
+        return doc(
+            portal_access_recovery_hr.upsert_staff_competency(
+                db, clinic_id, principal.staff_id, actor, payload
+            )
+        )
+
+    @app.post("/api/v1/hr/competencies/validate-assignment")
+    def validate_staff_competency_endpoint(
+        payload: StaffCompetencyValidateRequest,
+        context=Depends(require_perm("appointment.write")),
+    ):
+        db, clinic_id, actor = context
+        return portal_access_recovery_hr.validate_staff_competency_assignment(
+            db, clinic_id, actor, payload
+        )
+
+    @app.get("/api/v1/hr/commission-preview")
+    def get_commission_preview_endpoint(context=Depends(require_perm("staff.manage"))):
+        db, clinic_id, _ = context
+        return portal_access_recovery_hr.get_commission_payroll_preview(db, clinic_id)
 
     @app.get("/api/v1/audit-events/page")
     def list_audit_events_paginated(

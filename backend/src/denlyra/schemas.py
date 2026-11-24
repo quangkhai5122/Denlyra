@@ -1022,3 +1022,104 @@ class MigrationCutoverPlanCreate(BaseModel):
     reconciled_patient_count: StrictInt = Field(ge=0)
     reconciled_total_balance_vnd: StrictInt = Field(ge=0)
     rollback_runbook_note: str = Field(min_length=5, max_length=300)
+
+
+class RedactedTelemetryCreate(BaseModel):
+    trace_id: str = Field(min_length=4, max_length=64)
+    span_name: str = Field(min_length=2, max_length=120)
+    severity: Literal["info", "warn", "error"] = "info"
+    attributes: dict[str, str | int | bool] = Field(default_factory=dict)
+
+
+class ClinicOnboardingConfigCreate(BaseModel):
+    configured_roles: list[
+        Literal[
+            "clinic_owner",
+            "medical_director",
+            "dentist",
+            "assistant",
+            "receptionist",
+            "treatment_coordinator",
+            "finance",
+        ]
+    ] = Field(min_length=1, max_length=10)
+    legacy_field_mapping: dict[str, str] = Field(default_factory=dict)
+    mark_ready: bool = False
+
+
+class SupportConsentGrantCreate(BaseModel):
+    ticket_reference: str = Field(min_length=3, max_length=80)
+    ttl_seconds: StrictInt = Field(default=600, ge=60, le=86400)
+    allow_live_patient_records: bool = False
+
+
+class SupportDiagnosticExportRequest(BaseModel):
+    grant_id: str
+    include_patient_records: bool = False
+
+
+class SecurityIncidentCreate(BaseModel):
+    severity: Literal["low", "medium", "high", "critical_potential_breach"]
+    incident_type: Literal[
+        "unauthorized_access_attempt",
+        "token_compromise",
+        "device_theft",
+        "malware_upload_quarantined",
+        "data_exfiltration_alert",
+    ]
+    summary: str = Field(min_length=5, max_length=300)
+
+
+class SecurityIncidentTransitionRequest(BaseModel):
+    next_status: Literal["contained", "counsel_reviewed", "closed"]
+    detail_note: str = Field(min_length=3, max_length=300)
+    counsel_guidance_note: str | None = Field(default=None, max_length=400)
+    notification_decision: str | None = Field(default=None, max_length=120)
+
+
+class SupplyChainVerifyRequest(BaseModel):
+    constraints_override_text: str | None = Field(default=None, max_length=8000)
+
+
+class PatientAccessRequestCreate(BaseModel):
+    requester_kind: Literal["self", "guardian", "unverified_third_party"]
+    requester_name: str = Field(min_length=2, max_length=160)
+    request_type: Literal["structured_access_export", "erasure_request"]
+    authority_verified: bool
+
+
+class CancellationRecoveryRequest(BaseModel):
+    claim_clinical_urgency_ranking: bool = False
+
+
+class PortalUploadCreate(BaseModel):
+    original_filename: str = Field(min_length=3, max_length=200)
+    declared_media_type: str = Field(min_length=3, max_length=80)
+    content_b64: str = Field(min_length=4, max_length=80000)
+
+
+class PortalUploadReviewRequest(BaseModel):
+    decision: Literal["approved_by_staff", "rejected_by_staff"]
+    review_note: str = Field(min_length=3, max_length=300)
+
+
+class PortalSupportMessageCreate(BaseModel):
+    message_text: str = Field(min_length=3, max_length=500)
+
+
+class PortalSupportReplyRequest(BaseModel):
+    reply_text: str = Field(min_length=3, max_length=500)
+    authoring_source: Literal["human_staff"] = "human_staff"
+
+
+class StaffCompetencyUpsert(BaseModel):
+    staff_id: str
+    competency_code: str = Field(min_length=2, max_length=60)
+    title_vi: str = Field(min_length=3, max_length=200)
+    expires_on: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
+
+
+class StaffCompetencyValidateRequest(BaseModel):
+    staff_id: str
+    competency_code: str = Field(min_length=2, max_length=60)
+    as_of_date: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")

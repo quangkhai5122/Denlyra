@@ -2,7 +2,7 @@
 
 ## Executed in starter
 - Synthetic demo UI: overview, clinics, patients, appointments, encounter draft, note version/demolock, plan/task version, FDI tooth-code event reference, lab status, finance charges/payment, audit event.
-- Python backend FastAPI+SQLAlchemy (97 tables, 234 OpenAPI operations across 187 paths). Demo SQLite automatically bootstrapped; clinic scoping on API reads; basic Host/Origin protections.
+- Python backend FastAPI+SQLAlchemy (109 tables, 258 OpenAPI operations across 206 paths). Demo SQLite automatically bootstrapped; clinic scoping on API reads; basic Host/Origin protections.
 - T001 synthetic token issuer (`HS256`), deny-by-default RBAC/ABAC policy engine, staff deactivation token invalidation, JTI revocation, one-time clinic-scoped signed URLs, and sensitive clinical read/denial audit trail (`ADR-007`).
 - T002 explicit frozen Alembic migration chain (`0001_demo` -> `0002_hardening` -> `0003_treatment_and_signing` -> `0004_lab_consent_finance_and_migration`), atomic multi-resource (doctor + chair + equipment) booking, `IntegrityError` -> `409` rollback, idempotency keys, SQLite overlap trigger, 2-connection barrier concurrency test harness, `scripts/verify_postgres_live.py`, and CI `postgres-concurrency-tests` job. Local live PostgreSQL server execution remains unverified on hosts without Docker/PostgreSQL.
 - T003 quarantined synthetic `FormRegistry` with immutable `(official_code, schema_version)`, tri-state (`present`/`explicit_negative`/`unknown`/`missing`) validation (`INV-022`), and fail-closed `409` blocks on self-approval and official EMR export (`docs/clinical/NEEDS_CLINICAL_REVIEW.md`).
@@ -25,7 +25,9 @@
 - T020 aggregate-only multi-branch owner view (`ORG-007`), auto-expiring temporary delegation (`ORG-009`), staff task escalations & patient-tied handoffs (`HR-005`, `HR-006`), differentiated contact timeline & restricted complaint notes (`CRM-001`, `CRM-009`), and allowlisted read-only ops assistant (`AI-005`, `ADR-015`).
 - T021 licensed facility metadata without display-name inference (`ORG-001`), clinician-approved procedure duration templates & non-mutating constraint slot optimizer (`SCH-011`, `SCH-012`), HMAC-traceable non-bank financial receipt exports (`FIN-013`), and `Asia/Ho_Chi_Minh` timezone-correct attendance & overtime isolated from clinical authorship (`HR-001`, `HR-010`, `ADR-016`).
 - T022 reviewed reminder templates & send-window/consent-gated communication drafts (`CRM-002`, `AI-006`), decoupled anonymous 1–5 patient satisfaction survey (`CRM-011`), and hash-verified incumbent software export adapter + parallel-run cutover guard (`INT-012`, `MIG-009`, `MIG-010`, `ADR-016`).
-- Negative automated tests (85 passed, 1 skipped live-Postgres check in backend; 4 passed in `apps/clinic-web`), legal and domain reference docs, 222-ID feature catalog (176 partial demo flags).
+- T023 PHI-redacted structured telemetry (`OPS-005`), isolated per-clinic onboarding configuration (`OPS-010`), consent-gated customer support diagnostic bundles (`OPS-012`), forensic security incident & breach workflow (`SEC-012`), and exact-pinning SBOM supply-chain verifier (`SEC-013`, `ADR-017`).
+- T024 authority-verified & retention-guarded patient subject access export (`PAT-011`), FIFO consent-safe cancellation slot recovery (`SCH-014`), malware-scanned quarantined portal uploads & human-triaged support messaging (`PORT-008`, `PORT-010`), and staff competency expiry guard + performed-vs-collected commission preview (`HR-007`, `HR-009`, `ADR-017`).
+- Negative automated tests (91 passed, 1 skipped live-Postgres check in backend; 4 passed in `apps/clinic-web`), legal and domain reference docs, 222-ID feature catalog (187 partial demo flags).
 
 ## Designed only — not implemented
 - Real OIDC/MFA login, multi-clinic production user identities, production clinic database routing, external Cloud KMS/HSM key custody.

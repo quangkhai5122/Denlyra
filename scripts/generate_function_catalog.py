@@ -267,9 +267,9 @@ IMPLEMENTED = {
     "ORG-001", "ORG-002", "ORG-003", "ORG-004", "ORG-005", "ORG-006", "ORG-007", "ORG-008",
     "ORG-009", "ORG-011",
     "PAT-001", "PAT-002", "PAT-003", "PAT-004", "PAT-005", "PAT-006", "PAT-007", "PAT-008",
-    "PAT-009", "PAT-010",
+    "PAT-009", "PAT-010", "PAT-011",
     "SCH-001", "SCH-002", "SCH-003", "SCH-004", "SCH-005", "SCH-006", "SCH-007", "SCH-008",
-    "SCH-009", "SCH-010", "SCH-011", "SCH-012", "SCH-013", "SCH-015",
+    "SCH-009", "SCH-010", "SCH-011", "SCH-012", "SCH-013", "SCH-014", "SCH-015",
     "EMR-001", "EMR-002", "EMR-003", "EMR-004", "EMR-005", "EMR-006", "EMR-007", "EMR-008",
     "EMR-009", "EMR-010", "EMR-011", "EMR-012", "EMR-013", "EMR-014", "EMR-015", "EMR-017",
     "EMR-018",
@@ -285,8 +285,9 @@ IMPLEMENTED = {
     "FIN-010", "FIN-011", "FIN-013", "FIN-014",
     "CRM-001", "CRM-002", "CRM-003", "CRM-004", "CRM-005", "CRM-009", "CRM-010", "CRM-011",
     "PORT-001", "PORT-002", "PORT-003", "PORT-004", "PORT-005", "PORT-006", "PORT-007",
-    "PORT-009",
-    "HR-001", "HR-002", "HR-003", "HR-004", "HR-005", "HR-006", "HR-008", "HR-010",
+    "PORT-008", "PORT-009", "PORT-010",
+    "HR-001", "HR-002", "HR-003", "HR-004", "HR-005", "HR-006", "HR-007", "HR-008", "HR-009",
+    "HR-010",
     "RPT-001", "RPT-002", "RPT-003", "RPT-004", "RPT-005", "RPT-006", "RPT-007", "RPT-008",
     "RPT-011",
     "AI-002", "AI-003", "AI-004", "AI-005", "AI-006", "AI-009", "AI-010", "AI-011", "AI-014",
@@ -294,7 +295,8 @@ IMPLEMENTED = {
     "MIG-001", "MIG-002", "MIG-003", "MIG-004", "MIG-005", "MIG-006", "MIG-007", "MIG-008",
     "MIG-009", "MIG-010",
     "SEC-001", "SEC-002", "SEC-004", "SEC-006", "SEC-007", "SEC-008", "SEC-010", "SEC-011",
-    "OPS-001", "OPS-002", "OPS-004", "OPS-006", "OPS-007",
+    "SEC-012", "SEC-013",
+    "OPS-001", "OPS-002", "OPS-004", "OPS-005", "OPS-006", "OPS-007", "OPS-010", "OPS-012",
 }
 # The codes marked "D" represent synthetic demo behavior ONLY, not production implementations.
 

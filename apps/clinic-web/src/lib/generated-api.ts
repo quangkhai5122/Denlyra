@@ -85,6 +85,10 @@ export interface BreakGlassReviewRequest {
   review_notes: string;
 }
 
+export interface CancellationRecoveryRequest {
+  claim_clinical_urgency_ranking?: boolean;
+}
+
 export interface CashierReconciliationCreate {
   counted_cash_vnd: number;
   counted_transfer_vnd: number;
@@ -122,6 +126,12 @@ export interface CheckinCreate {
 export interface CheckinStatusUpdate {
   next_status: "in_chair" | "checked_out" | "no_show";
   notes?: string;
+}
+
+export interface ClinicOnboardingConfigCreate {
+  configured_roles: Array<"clinic_owner" | "medical_director" | "dentist" | "assistant" | "receptionist" | "treatment_coordinator" | "finance">;
+  legacy_field_mapping?: Record<string, string>;
+  mark_ready?: boolean;
 }
 
 export interface CommunicationDraftCreate {
@@ -444,6 +454,13 @@ export interface PaperItemVerifyLinkRequest {
   claim_digitally_signed?: boolean;
 }
 
+export interface PatientAccessRequestCreate {
+  requester_kind: "self" | "guardian" | "unverified_third_party";
+  requester_name: string;
+  request_type: "structured_access_export" | "erasure_request";
+  authority_verified: boolean;
+}
+
 export interface PatientContactLogCreate {
   channel: "phone" | "sms_stub" | "zalo_stub" | "in_person" | "portal";
   visibility: "internal_staff_only" | "patient_visible";
@@ -544,6 +561,26 @@ export interface PortalRescheduleDecisionRequest {
   resolution_note: string;
 }
 
+export interface PortalSupportMessageCreate {
+  message_text: string;
+}
+
+export interface PortalSupportReplyRequest {
+  reply_text: string;
+  authoring_source?: string;
+}
+
+export interface PortalUploadCreate {
+  original_filename: string;
+  declared_media_type: string;
+  content_b64: string;
+}
+
+export interface PortalUploadReviewRequest {
+  decision: "approved_by_staff" | "rejected_by_staff";
+  review_note: string;
+}
+
 export interface PriceCatalogCreate {
   service_code: string;
   name_vi: string;
@@ -594,6 +631,13 @@ export interface RecallCreate {
   reason: string;
   clinician_approved?: boolean;
   owner_role?: "treatment_coordinator" | "receptionist" | "dentist";
+}
+
+export interface RedactedTelemetryCreate {
+  trace_id: string;
+  span_name: string;
+  severity?: "info" | "warn" | "error";
+  attributes?: Record<string, string | number | boolean>;
 }
 
 export interface RefundCreate {
@@ -664,6 +708,19 @@ export interface ScheduleOptimizerProposeRequest {
   override_duration_minutes?: number | null;
 }
 
+export interface SecurityIncidentCreate {
+  severity: "low" | "medium" | "high" | "critical_potential_breach";
+  incident_type: "unauthorized_access_attempt" | "token_compromise" | "device_theft" | "malware_upload_quarantined" | "data_exfiltration_alert";
+  summary: string;
+}
+
+export interface SecurityIncidentTransitionRequest {
+  next_status: "contained" | "counsel_reviewed" | "closed";
+  detail_note: string;
+  counsel_guidance_note?: string | null;
+  notification_decision?: string | null;
+}
+
 export interface ServiceComplaintCreate {
   patient_id: string;
   severity: "low" | "moderate" | "high" | "critical";
@@ -690,6 +747,19 @@ export interface StaffAttendanceCreate {
   check_in_at: string;
   check_out_at: string;
   note?: string;
+}
+
+export interface StaffCompetencyUpsert {
+  staff_id: string;
+  competency_code: string;
+  title_vi: string;
+  expires_on: string;
+}
+
+export interface StaffCompetencyValidateRequest {
+  staff_id: string;
+  competency_code: string;
+  as_of_date: string;
 }
 
 export interface StaffCreateRequest {
@@ -746,6 +816,21 @@ export interface StockReservationReleaseRequest {
 export interface SupplierCreate {
   name: string;
   tax_code_demo: string;
+}
+
+export interface SupplyChainVerifyRequest {
+  constraints_override_text?: string | null;
+}
+
+export interface SupportConsentGrantCreate {
+  ticket_reference: string;
+  ttl_seconds?: number;
+  allow_live_patient_records?: boolean;
+}
+
+export interface SupportDiagnosticExportRequest {
+  grant_id: string;
+  include_patient_records?: boolean;
 }
 
 export interface TaskCoordinationLinkCreate {
@@ -904,6 +989,10 @@ export const OPENAPI_OPERATIONS = [
   "POST /api/v1/finance/reconciliations",
   "GET /api/v1/hr/attendance",
   "POST /api/v1/hr/attendance",
+  "GET /api/v1/hr/commission-preview",
+  "GET /api/v1/hr/competencies",
+  "POST /api/v1/hr/competencies",
+  "POST /api/v1/hr/competencies/validate-assignment",
   "GET /api/v1/hr/overtime-summary",
   "GET /api/v1/interop/fhir/r4/patients/{patient_id}/bundle",
   "POST /api/v1/interop/fhir/r4/validate-bundle",
@@ -969,6 +1058,13 @@ export const OPENAPI_OPERATIONS = [
   "POST /api/v1/operations/waitlist",
   "POST /api/v1/operations/waitlist/{entry_id}/confirm-booking",
   "POST /api/v1/operations/waitlist/{entry_id}/prepare-outreach",
+  "GET /api/v1/ops/onboarding-config",
+  "POST /api/v1/ops/onboarding-config",
+  "POST /api/v1/ops/support/diagnostic-export",
+  "POST /api/v1/ops/support/grants",
+  "POST /api/v1/ops/support/grants/{grant_id}/revoke",
+  "GET /api/v1/ops/telemetry-events",
+  "POST /api/v1/ops/telemetry-events",
   "POST /api/v1/org/branch-scope-grants",
   "GET /api/v1/org/facility-profile",
   "POST /api/v1/org/facility-profile",
@@ -978,6 +1074,8 @@ export const OPENAPI_OPERATIONS = [
   "POST /api/v1/patient-portal/appointments/{appointment_id}/reschedule-requests",
   "POST /api/v1/patient-portal/intake-forms",
   "GET /api/v1/patient-portal/overview",
+  "POST /api/v1/patient-portal/support-messages",
+  "POST /api/v1/patient-portal/uploads",
   "GET /api/v1/patients",
   "POST /api/v1/patients",
   "GET /api/v1/patients/merges",
@@ -986,6 +1084,8 @@ export const OPENAPI_OPERATIONS = [
   "POST /api/v1/patients/merges/{merge_id}/reverse",
   "GET /api/v1/patients/page",
   "GET /api/v1/patients/{patient_id}",
+  "GET /api/v1/patients/{patient_id}/access-requests",
+  "POST /api/v1/patients/{patient_id}/access-requests",
   "GET /api/v1/patients/{patient_id}/consents",
   "GET /api/v1/patients/{patient_id}/contact-timeline",
   "POST /api/v1/patients/{patient_id}/contact-timeline",
@@ -1004,15 +1104,24 @@ export const OPENAPI_OPERATIONS = [
   "POST /api/v1/portal/plan-summaries",
   "GET /api/v1/portal/reschedule-requests",
   "POST /api/v1/portal/reschedule-requests/{request_id}/approve",
+  "GET /api/v1/portal/support-messages",
+  "POST /api/v1/portal/support-messages/{message_id}/reply",
+  "GET /api/v1/portal/uploads",
+  "POST /api/v1/portal/uploads/{upload_id}/review",
   "POST /api/v1/referrals/{referral_id}/review",
   "GET /api/v1/reports/dictionary",
   "GET /api/v1/reports/kpi-lineage",
   "POST /api/v1/resources",
+  "POST /api/v1/scheduling/appointments/{appointment_id}/cancellation-recovery",
   "GET /api/v1/scheduling/duration-estimate",
   "GET /api/v1/scheduling/duration-templates",
   "POST /api/v1/scheduling/duration-templates",
   "POST /api/v1/scheduling/optimizer/proposals/{proposal_id}/accept",
   "POST /api/v1/scheduling/optimizer/propose",
+  "GET /api/v1/security/incidents",
+  "POST /api/v1/security/incidents",
+  "POST /api/v1/security/incidents/{incident_id}/transition",
+  "POST /api/v1/security/supply-chain/verify",
   "GET /api/v1/signed-download/{grant_token}",
   "POST /api/v1/staff",
   "POST /api/v1/staff/{staff_id}/deactivate",
@@ -1432,5 +1541,11 @@ export class DenlyraApiClient {
   }
   getSatisfactionSummary() {
     return this.request<{ clinic_id: string; total_responses: number; average_overall_x100: number; rating_distribution: Record<string, number>; contains_patient_identifiers: boolean }>("GET", "crm/satisfaction/summary");
+  }
+  verifySupplyChainSbom(payload?: SupplyChainVerifyRequest) {
+    return this.request<{ id: string; sbom_component_count: number; unpinned_dependency_count: number; sbom_canonical_sha256: string; status: string }>("POST", "security/supply-chain/verify", payload ?? {});
+  }
+  getCommissionPreview() {
+    return this.request<{ clinic_id: string; performed_equated_to_collected: boolean; payroll_legal_review_status: string; clinic_totals: { total_performed_procedures_count: number; total_allocated_collected_vnd: number } }>("GET", "hr/commission-preview");
   }
 }

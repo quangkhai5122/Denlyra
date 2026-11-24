@@ -6,6 +6,7 @@ Synthetic research demonstrator only — NOT a certified EMR or real medical dia
 """
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 import json
 
 from fastapi import HTTPException
@@ -269,6 +270,39 @@ def record_performed_procedure_evidence(
         plan = svc.ensure(db, m.TreatmentPlan, pv.plan_id, clinic_id)
         if plan.patient_id != enc.patient_id:
             raise HTTPException(422, "plan_task_id belongs to a different patient")
+
+    code_norm = data.procedure_code_demo.strip().upper()
+    governed = db.scalar(
+        select(m.StaffCompetencyRecord.id).where(
+            m.StaffCompetencyRecord.clinic_id == clinic_id,
+            m.StaffCompetencyRecord.competency_code == code_norm,
+        )
+    )
+    if governed is not None:
+        today_hcm = datetime.now(timezone(timedelta(hours=7))).strftime("%Y-%m-%d")
+        staff_comp = db.scalar(
+            select(m.StaffCompetencyRecord).where(
+                m.StaffCompetencyRecord.clinic_id == clinic_id,
+                m.StaffCompetencyRecord.staff_id == staff_id,
+                m.StaffCompetencyRecord.competency_code == code_norm,
+                m.StaffCompetencyRecord.status == "active",
+            )
+        )
+        if staff_comp is None or staff_comp.expires_on < today_hcm:
+            svc.audit(
+                db,
+                clinic_id,
+                actor,
+                "hr.expired_or_missing_competency_blocked",
+                "encounter",
+                enc.id,
+                {"staff_id": staff_id, "competency_code": code_norm},
+            )
+            db.commit()
+            raise HTTPException(
+                409,
+                f"Practitioner lacks active non-expired competency '{code_norm}' as of {today_hcm} (HR-009)",
+            )
 
     item = m.PerformedProcedureEvidence(
         clinic_id=clinic_id,

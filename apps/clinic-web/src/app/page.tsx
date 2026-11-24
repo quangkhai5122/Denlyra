@@ -2073,6 +2073,24 @@ export default function ClinicWorkspacePage() {
               >
                 Kiểm tra Phạm vi Giấy phép &amp; Khảo sát Ẩn danh (ORG-001 / CRM-011)
               </button>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={async () => {
+                  setConflictMsg("");
+                  const [sbomRes, commRes] = await Promise.all([
+                    client.verifySupplyChainSbom(),
+                    client.getCommissionPreview(),
+                  ]);
+                  if (!sbomRes.ok) return handleApiFailure(sbomRes.status, sbomRes.detail, sbomRes.conflict);
+                  if (!commRes.ok) return handleApiFailure(commRes.status, commRes.detail, commRes.conflict);
+                  setStatusMsg(
+                    `SBOM Chuỗi Cung ứng (SEC-013): ${sbomRes.data.status} (${sbomRes.data.sbom_component_count} gói ghim chặt, unpinned=${sbomRes.data.unpinned_dependency_count}) · Đối soát Hoa hồng (HR-007): thủ thuật=${commRes.data.clinic_totals.total_performed_procedures_count} tách biệt thực thu=${formatVndInteger(commRes.data.clinic_totals.total_allocated_collected_vnd)}.`,
+                  );
+                }}
+              >
+                Kiểm chứng SBOM &amp; Tách biệt Thủ thuật–Hoa hồng (SEC-013 / HR-007)
+              </button>
             </div>
           </section>
         </div>

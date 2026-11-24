@@ -497,6 +497,12 @@ def render_typescript(openapi: dict) -> str:
             "  getSatisfactionSummary() {",
             '    return this.request<{ clinic_id: string; total_responses: number; average_overall_x100: number; rating_distribution: Record<string, number>; contains_patient_identifiers: boolean }>("GET", "crm/satisfaction/summary");',
             "  }",
+            "  verifySupplyChainSbom(payload?: SupplyChainVerifyRequest) {",
+            '    return this.request<{ id: string; sbom_component_count: number; unpinned_dependency_count: number; sbom_canonical_sha256: string; status: string }>("POST", "security/supply-chain/verify", payload ?? {});',
+            "  }",
+            "  getCommissionPreview() {",
+            '    return this.request<{ clinic_id: string; performed_equated_to_collected: boolean; payroll_legal_review_status: string; clinic_totals: { total_performed_procedures_count: number; total_allocated_collected_vnd: number } }>("GET", "hr/commission-preview");',
+            "  }",
             "}",
             "",
         ]

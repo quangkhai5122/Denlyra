@@ -1787,3 +1787,233 @@ class MigrationCutoverPlan(Base):
     rollback_runbook_note: Mapped[str] = mapped_column(String(300), nullable=False)
     approved_by_staff_id: Mapped[str] = mapped_column(String(36), nullable=False)
     created_at: Mapped[datetime] = created_col()
+
+
+class RedactedTelemetryEvent(Base):
+    __tablename__ = "redacted_telemetry_event"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    trace_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    span_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    severity: Mapped[str] = mapped_column(String(16), nullable=False)
+    sanitized_attributes_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    redacted_field_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    contains_phi_or_note_text: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+    actor_demo: Mapped[str] = mapped_column(String(100), nullable=False)
+    created_at: Mapped[datetime] = created_col()
+    __table_args__ = (
+        CheckConstraint("NOT contains_phi_or_note_text", name="ck_telemetry_no_phi"),
+    )
+
+
+class ClinicOnboardingConfig(Base):
+    __tablename__ = "clinic_onboarding_config"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    version_number: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    configured_roles_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    catalog_item_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    quarantined_form_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    legacy_field_mapping_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    readiness_status: Mapped[str] = mapped_column(
+        String(36), nullable=False, default="draft_incomplete"
+    )
+    configured_by_staff_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    created_at: Mapped[datetime] = created_col()
+    __table_args__ = (
+        UniqueConstraint("clinic_id", "version_number", name="uq_onboard_cfg_clinic_ver"),
+    )
+
+
+class CustomerSupportConsentGrant(Base):
+    __tablename__ = "customer_support_consent_grant"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    ticket_reference: Mapped[str] = mapped_column(String(80), nullable=False)
+    scope: Mapped[str] = mapped_column(
+        String(48), nullable=False, default="redacted_system_diagnostics_only"
+    )
+    allow_live_patient_records: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(), nullable=False)
+    revoked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    granted_by_staff_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    created_at: Mapped[datetime] = created_col()
+    __table_args__ = (
+        CheckConstraint("NOT allow_live_patient_records", name="ck_support_no_live_phi"),
+    )
+
+
+class SupportDiagnosticBundle(Base):
+    __tablename__ = "support_diagnostic_bundle"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    grant_id: Mapped[str] = mapped_column(
+        ForeignKey("customer_support_consent_grant.id"), nullable=False
+    )
+    bundle_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    diagnostic_summary_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    exported_by_actor: Mapped[str] = mapped_column(String(100), nullable=False)
+    created_at: Mapped[datetime] = created_col()
+
+
+class SecurityIncidentCase(Base):
+    __tablename__ = "security_incident_case"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    severity: Mapped[str] = mapped_column(String(32), nullable=False)
+    incident_type: Mapped[str] = mapped_column(String(48), nullable=False)
+    summary: Mapped[str] = mapped_column(String(300), nullable=False)
+    preserved_audit_head_seq: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    preserved_audit_head_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    containment_status: Mapped[str] = mapped_column(
+        String(36), nullable=False, default="triaged_evidence_preserved"
+    )
+    counsel_guidance_note: Mapped[str | None] = mapped_column(String(400))
+    notification_decision: Mapped[str | None] = mapped_column(String(120))
+    opened_by_staff_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    created_at: Mapped[datetime] = created_col()
+
+
+class SecurityIncidentEvent(Base):
+    __tablename__ = "security_incident_event"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    incident_id: Mapped[str] = mapped_column(
+        ForeignKey("security_incident_case.id"), nullable=False
+    )
+    step_action: Mapped[str] = mapped_column(String(36), nullable=False)
+    detail_note: Mapped[str] = mapped_column(String(300), nullable=False)
+    actor_staff_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    created_at: Mapped[datetime] = created_col()
+
+
+class SupplyChainAttestation(Base):
+    __tablename__ = "supply_chain_attestation"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    python_constraints_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    npm_lockfile_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    sbom_component_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    unpinned_dependency_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    sbom_canonical_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    attestation_hmac_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="verified_pinned")
+    verified_by_staff_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    created_at: Mapped[datetime] = created_col()
+
+
+class PatientAccessRequest(Base):
+    __tablename__ = "patient_access_request"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    patient_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    requester_kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    requester_name: Mapped[str] = mapped_column(String(160), nullable=False)
+    request_type: Mapped[str] = mapped_column(String(36), nullable=False)
+    authority_verified: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    status: Mapped[str] = mapped_column(String(36), nullable=False)
+    export_sha256: Mapped[str | None] = mapped_column(String(64))
+    export_payload_json: Mapped[str | None] = mapped_column(Text)
+    decision_reason: Mapped[str] = mapped_column(String(300), nullable=False)
+    handled_by_staff_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    created_at: Mapped[datetime] = created_col()
+    __table_args__ = (
+        ForeignKeyConstraint(["clinic_id", "patient_id"], ["patient.clinic_id", "patient.id"]),
+    )
+
+
+class CancellationRecoverySuggestion(Base):
+    __tablename__ = "cancellation_recovery_suggestion"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    cancelled_appointment_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    ranked_candidates_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    excluded_no_consent_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    clinical_priority_inferred: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+    actor_demo: Mapped[str] = mapped_column(String(100), nullable=False)
+    created_at: Mapped[datetime] = created_col()
+    __table_args__ = (
+        CheckConstraint("NOT clinical_priority_inferred", name="ck_cancel_rec_no_clin_prio"),
+        ForeignKeyConstraint(
+            ["clinic_id", "cancelled_appointment_id"],
+            ["appointment.clinic_id", "appointment.id"],
+        ),
+    )
+
+
+class PortalQuarantinedUpload(Base):
+    __tablename__ = "portal_quarantined_upload"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    patient_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    portal_grant_id: Mapped[str] = mapped_column(
+        ForeignKey("portal_session_grant.id"), nullable=False
+    )
+    original_filename: Mapped[str] = mapped_column(String(200), nullable=False)
+    declared_media_type: Mapped[str] = mapped_column(String(80), nullable=False)
+    byte_size: Mapped[int] = mapped_column(Integer, nullable=False)
+    sha256_hex: Mapped[str] = mapped_column(String(64), nullable=False)
+    malware_scan_status: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="clean_quarantined"
+    )
+    quarantine_status: Mapped[str] = mapped_column(
+        String(36), nullable=False, default="quarantined_pending_review"
+    )
+    reviewed_by_staff_id: Mapped[str | None] = mapped_column(String(36))
+    review_note: Mapped[str | None] = mapped_column(String(300))
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime())
+    created_at: Mapped[datetime] = created_col()
+    __table_args__ = (
+        CheckConstraint("byte_size > 0 AND byte_size <= 5242880", name="ck_portal_upload_size"),
+        ForeignKeyConstraint(["clinic_id", "patient_id"], ["patient.clinic_id", "patient.id"]),
+    )
+
+
+class PortalSupportMessage(Base):
+    __tablename__ = "portal_support_message"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    patient_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    message_text: Mapped[str] = mapped_column(String(500), nullable=False)
+    urgency_flag: Mapped[str] = mapped_column(String(32), nullable=False)
+    triage_status: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="queued_for_human"
+    )
+    autonomous_medical_advice_sent: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+    human_reply_text: Mapped[str | None] = mapped_column(String(500))
+    responder_staff_id: Mapped[str | None] = mapped_column(String(36))
+    responded_at: Mapped[datetime | None] = mapped_column(DateTime())
+    created_at: Mapped[datetime] = created_col()
+    __table_args__ = (
+        CheckConstraint(
+            "NOT autonomous_medical_advice_sent", name="ck_portal_msg_no_auto_advice"
+        ),
+        ForeignKeyConstraint(["clinic_id", "patient_id"], ["patient.clinic_id", "patient.id"]),
+    )
+
+
+class StaffCompetencyRecord(Base):
+    __tablename__ = "staff_competency_record"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    staff_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    competency_code: Mapped[str] = mapped_column(String(60), nullable=False)
+    title_vi: Mapped[str] = mapped_column(String(200), nullable=False)
+    expires_on: Mapped[str] = mapped_column(String(10), nullable=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="active")
+    verified_by_staff_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    created_at: Mapped[datetime] = created_col()
+    __table_args__ = (
+        UniqueConstraint(
+            "clinic_id", "staff_id", "competency_code", name="uq_staff_competency_code"
+        ),
+        ForeignKeyConstraint(["clinic_id", "staff_id"], ["staff.clinic_id", "staff.id"]),
+    )

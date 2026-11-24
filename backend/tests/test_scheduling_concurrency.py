@@ -42,7 +42,7 @@ def test_alembic_upgrade_from_empty_and_from_0001_fixture_preserves_data(tmp_pat
                 )
             )
 
-        # Step 2: Upgrade existing 0001_demo DB through 0002..0010 to head (0011_facility_optimizer_receipts_comms_and_cutover)
+        # Step 2: Upgrade existing 0001_demo DB through 0002..0011 to head (0012_telemetry_onboarding_incident_portal_and_hr)
         command.upgrade(cfg, "0002_hardening")
         command.upgrade(cfg, "0003_treatment_and_signing")
         command.upgrade(cfg, "0004_lab_consent_finance_and_migration")
@@ -52,6 +52,7 @@ def test_alembic_upgrade_from_empty_and_from_0001_fixture_preserves_data(tmp_pat
         command.upgrade(cfg, "0008_patient_merge_portal_and_kpi_lineage")
         command.upgrade(cfg, "0009_encounter_lifecycle_and_clinical_governance")
         command.upgrade(cfg, "0010_odontogram_referrals_delegation_and_ops")
+        command.upgrade(cfg, "0011_facility_optimizer_receipts_comms_and_cutover")
         command.upgrade(cfg, "head")
         tables_head = set(inspect(engine).get_table_names())
         assert "revoked_token" in tables_head
@@ -81,9 +82,12 @@ def test_alembic_upgrade_from_empty_and_from_0001_fixture_preserves_data(tmp_pat
         assert "facility_license_profile" in tables_head
         assert "financial_receipt_export" in tables_head
         assert "migration_cutover_plan" in tables_head
+        assert "redacted_telemetry_event" in tables_head
+        assert "supply_chain_attestation" in tables_head
+        assert "staff_competency_record" in tables_head
         assert "schema_migration_meta" in tables_head
         with engine.connect() as conn:
-            assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0011_facility_optimizer_receipts_comms_and_cutover"
+            assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0012_telemetry_onboarding_incident_portal_and_hr"
             preserved = conn.execute(
                 text("SELECT display_name FROM patient WHERE id = 'pat-v1-0001'")
             ).scalar()
