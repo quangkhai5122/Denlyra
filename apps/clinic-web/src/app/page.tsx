@@ -2055,6 +2055,24 @@ export default function ClinicWorkspacePage() {
               >
                 Hỏi Trợ lý Vận hành Chỉ Đọc (AI-005)
               </button>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={async () => {
+                  setConflictMsg("");
+                  const [scRes, satRes] = await Promise.all([
+                    client.checkFacilityScope("general_dentistry"),
+                    client.getSatisfactionSummary(),
+                  ]);
+                  if (!scRes.ok) return handleApiFailure(scRes.status, scRes.detail, scRes.conflict);
+                  if (!satRes.ok) return handleApiFailure(satRes.status, satRes.detail, satRes.conflict);
+                  setStatusMsg(
+                    `Phạm vi Cơ sở (ORG-001): allowed=${String(scRes.data.allowed_in_demo_scope)} (${scRes.data.verification_status}, never_inferred=${String(scRes.data.never_inferred_from_display_name)}) · Khảo sát ẩn danh (CRM-011): ${satRes.data.total_responses} phản hồi (contains_pii=${String(satRes.data.contains_patient_identifiers)}).`,
+                  );
+                }}
+              >
+                Kiểm tra Phạm vi Giấy phép &amp; Khảo sát Ẩn danh (ORG-001 / CRM-011)
+              </button>
             </div>
           </section>
         </div>

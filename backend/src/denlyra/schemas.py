@@ -841,3 +841,184 @@ class OpsAssistantQueryRequest(BaseModel):
         "waitlist_count",
     ]
     prompt_note: str = Field(default="", max_length=400)
+
+
+FACILITY_PERMITTED_SCOPE = Literal[
+    "general_dentistry",
+    "prosthodontics",
+    "endodontics",
+    "orthodontics",
+    "oral_surgery_minor",
+    "implant_demo",
+]
+
+
+class FacilityLicenseProfileCreate(BaseModel):
+    legal_entity_name_demo: str = Field(min_length=3, max_length=200)
+    license_number_demo: str = Field(min_length=5, max_length=80)
+    license_type: Literal[
+        "specialist_dental_clinic",
+        "polyclinic_dental_dept",
+        "hospital_odonto_dept",
+    ]
+    permitted_scopes: list[FACILITY_PERMITTED_SCOPE] = Field(min_length=1, max_length=12)
+    regulating_authority_demo: str = Field(min_length=3, max_length=160)
+    verification_status: Literal[
+        "unverified_synthetic",
+        "pending_counsel_review",
+        "verified_demo_only",
+    ] = "unverified_synthetic"
+
+    @model_validator(mode="after")
+    def check_synthetic_license_prefix(self):
+        norm = self.license_number_demo.strip().upper()
+        if not (norm.startswith("DEMO-") or norm.startswith("SYN-")):
+            raise ValueError(
+                "license_number_demo must begin with DEMO- or SYN-; real clinic license numbers are prohibited (AGENTS.md / ORG-001)"
+            )
+        return self
+
+
+class ProcedureDurationTemplateCreate(BaseModel):
+    procedure_code: str = Field(min_length=2, max_length=60)
+    title_vi: str = Field(min_length=3, max_length=180)
+    recommended_minutes: StrictInt = Field(ge=15, le=240)
+    buffer_minutes: StrictInt = Field(default=0, ge=0, le=60)
+    fallback_minutes: StrictInt = Field(default=30, ge=15, le=120)
+
+
+class ScheduleOptimizerProposeRequest(BaseModel):
+    patient_id: str
+    practitioner_id: str
+    chair_id: str
+    procedure_code: str = Field(min_length=2, max_length=60)
+    window_start_at: datetime
+    window_end_at: datetime
+    override_duration_minutes: StrictInt | None = Field(default=None, ge=15, le=240)
+
+    @model_validator(mode="after")
+    def check_window(self):
+        if not self.window_start_at.tzinfo or not self.window_end_at.tzinfo:
+            raise ValueError("Provide timezone-aware RFC3339 window timestamps")
+        if self.window_end_at <= self.window_start_at:
+            raise ValueError("window_end_at must be after window_start_at")
+        return self
+
+
+class ScheduleOptimizerAcceptRequest(BaseModel):
+    slot_index: StrictInt = Field(default=0, ge=0, le=50)
+    reason_demo: str = Field(
+        default="Lịch hẹn duyệt từ gợi ý tối ưu hóa (SCH-012)", max_length=260
+    )
+
+
+class FinancialReceiptExportCreate(BaseModel):
+    export_note: str = Field(default="", max_length=260)
+    claim_verified_bank_settlement: bool = False
+
+
+class StaffAttendanceCreate(BaseModel):
+    staff_id: str
+    check_in_at: datetime
+    check_out_at: datetime
+    note: str = Field(default="", max_length=260)
+
+    @model_validator(mode="after")
+    def check_attendance_times(self):
+        if not self.check_in_at.tzinfo or not self.check_out_at.tzinfo:
+            raise ValueError("Provide timezone-aware RFC3339 check-in/check-out timestamps")
+        if self.check_out_at <= self.check_in_at:
+            raise ValueError("check_out_at must be strictly after check_in_at")
+        return self
+
+
+class ReminderTemplateCreate(BaseModel):
+    template_code: str = Field(min_length=2, max_length=60)
+    channel: Literal["sms_stub", "zalo_stub", "email_stub", "portal"]
+    purpose_category: Literal["appointment_care_notice", "marketing_promo"]
+    body_template_vi: str = Field(min_length=5, max_length=400)
+    window_start_hour_hcm: StrictInt = Field(default=8, ge=0, le=23)
+    window_end_hour_hcm: StrictInt = Field(default=20, ge=1, le=24)
+
+    @model_validator(mode="after")
+    def check_hours(self):
+        if self.window_end_hour_hcm <= self.window_start_hour_hcm:
+            raise ValueError("window_end_hour_hcm must exceed window_start_hour_hcm")
+        return self
+
+
+class CommunicationDraftCreate(BaseModel):
+    patient_id: str
+    template_code: str = Field(min_length=2, max_length=60)
+    proposed_send_at: datetime
+    appointment_id: str | None = None
+    custom_context_note: str = Field(default="", max_length=300)
+
+    @model_validator(mode="after")
+    def check_send_tz(self):
+        if not self.proposed_send_at.tzinfo:
+            raise ValueError("Provide timezone-aware RFC3339 proposed_send_at")
+        return self
+
+
+class SatisfactionTokenIssueRequest(BaseModel):
+    appointment_id: str
+
+
+class SatisfactionSurveySubmit(BaseModel):
+    clinic_id: str
+    survey_token: str = Field(min_length=16, max_length=600)
+    service_month: str = Field(pattern=r"^\d{4}-\d{2}$")
+    overall_rating: StrictInt = Field(ge=1, le=5)
+    wait_time_rating: StrictInt = Field(ge=1, le=5)
+    clarity_rating: StrictInt = Field(ge=1, le=5)
+    comment: str = Field(default="", max_length=400)
+
+    @model_validator(mode="after")
+    def reject_pii_in_anonymous_comment(self):
+        import re
+
+        txt = self.comment.strip()
+        if txt:
+            if (
+                re.search(r"(?:\+?84|0)\d{8,10}\b", txt)
+                or re.search(r"\b\d{9,12}\b", txt)
+                or "@" in txt
+            ):
+                raise ValueError(
+                    "Do not include phone numbers, email, or national ID in anonymous satisfaction survey (CRM-011)"
+                )
+        return self
+
+
+class IncumbentPatientRecordInput(BaseModel):
+    legacy_patient_id: str = Field(min_length=1, max_length=80)
+    display_name_demo: str = Field(min_length=2, max_length=160)
+    birth_year: StrictInt = Field(ge=1900, le=2100)
+    historical_balance_vnd: StrictInt = Field(ge=0)
+    legacy_signature_label: Literal[
+        "legacy_unsigned_or_paper",
+        "legacy_vendor_record_not_denlyra_signed",
+    ] = "legacy_unsigned_or_paper"
+
+
+class IncumbentExportIngestCreate(BaseModel):
+    source_vendor_code: str = Field(min_length=2, max_length=60)
+    schema_version: str = Field(min_length=1, max_length=30)
+    export_license_confirmed: bool
+    export_license_note: str = Field(min_length=5, max_length=300)
+    declared_sha256: str = Field(min_length=64, max_length=64)
+    records: list[IncumbentPatientRecordInput] = Field(min_length=1, max_length=500)
+
+
+class IncumbentExportApproveRequest(BaseModel):
+    review_note: str = Field(min_length=3, max_length=300)
+
+
+class MigrationCutoverPlanCreate(BaseModel):
+    incumbent_package_id: str
+    cutover_mode: Literal["parallel_run_read_only_legacy", "cutover_locked_legacy"]
+    legacy_write_freeze_confirmed: bool
+    reconciled_patient_count: StrictInt = Field(ge=0)
+    reconciled_total_balance_vnd: StrictInt = Field(ge=0)
+    rollback_runbook_note: str = Field(min_length=5, max_length=300)

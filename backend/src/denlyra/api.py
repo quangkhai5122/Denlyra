@@ -24,7 +24,9 @@ from . import (
     audit_chain,
     auth,
     clinical_lifecycle,
+    comms_satisfaction_cutover,
     continuity_governance,
+    facility_optimizer_receipts_hr,
     fhir_interop,
     governance_analytics,
     inventory,
@@ -141,6 +143,19 @@ from .schemas import (
     TemporaryDelegationCreate,
     TokenIssueRequest,
     WaitlistCreate,
+    CommunicationDraftCreate,
+    FacilityLicenseProfileCreate,
+    FinancialReceiptExportCreate,
+    IncumbentExportApproveRequest,
+    IncumbentExportIngestCreate,
+    MigrationCutoverPlanCreate,
+    ProcedureDurationTemplateCreate,
+    ReminderTemplateCreate,
+    SatisfactionSurveySubmit,
+    SatisfactionTokenIssueRequest,
+    ScheduleOptimizerAcceptRequest,
+    ScheduleOptimizerProposeRequest,
+    StaffAttendanceCreate,
 )
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -2380,6 +2395,283 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         db, _, _, principal = ctx_tuple
         return org_crm_ops_assistant.query_policy_aware_ops_assistant(
             db, principal, cfg.ai_assist_enabled, payload
+        )
+
+    @app.get("/api/v1/org/facility-profile")
+    def list_facility_profiles_endpoint(context=Depends(require_perm("context.read"))):
+        db, clinic_id, _ = context
+        rows = db.scalars(
+            select(m.FacilityLicenseProfile)
+            .where(m.FacilityLicenseProfile.clinic_id == clinic_id)
+            .order_by(m.FacilityLicenseProfile.version_number.desc())
+        ).all()
+        return [doc(r) for r in rows]
+
+    @app.post("/api/v1/org/facility-profile", status_code=201)
+    def publish_facility_profile_endpoint(
+        payload: FacilityLicenseProfileCreate,
+        ctx_tuple=Depends(require_principal_perm("staff.manage")),
+    ):
+        db, clinic_id, actor, principal = ctx_tuple
+        return doc(
+            facility_optimizer_receipts_hr.publish_facility_license_profile(
+                db, clinic_id, principal.staff_id, actor, payload
+            )
+        )
+
+    @app.get("/api/v1/org/facility-profile/scope-check")
+    def check_facility_scope_endpoint(
+        scope: str, context=Depends(require_perm("context.read"))
+    ):
+        db, clinic_id, _ = context
+        return facility_optimizer_receipts_hr.evaluate_facility_scope(db, clinic_id, scope)
+
+    @app.get("/api/v1/scheduling/duration-templates")
+    def list_duration_templates_endpoint(context=Depends(require_perm("appointment.read"))):
+        db, clinic_id, _ = context
+        rows = db.scalars(
+            select(m.ProcedureDurationTemplate)
+            .where(m.ProcedureDurationTemplate.clinic_id == clinic_id)
+            .order_by(m.ProcedureDurationTemplate.created_at.desc())
+        ).all()
+        return [doc(r) for r in rows]
+
+    @app.post("/api/v1/scheduling/duration-templates", status_code=201)
+    def publish_duration_template_endpoint(
+        payload: ProcedureDurationTemplateCreate,
+        ctx_tuple=Depends(require_principal_perm("plan.review")),
+    ):
+        db, clinic_id, actor, principal = ctx_tuple
+        return doc(
+            facility_optimizer_receipts_hr.publish_procedure_duration_template(
+                db, clinic_id, principal.staff_id, actor, payload
+            )
+        )
+
+    @app.get("/api/v1/scheduling/duration-estimate")
+    def estimate_duration_endpoint(
+        procedure_code: str, context=Depends(require_perm("appointment.read"))
+    ):
+        db, clinic_id, _ = context
+        return facility_optimizer_receipts_hr.estimate_procedure_duration(
+            db, clinic_id, procedure_code
+        )
+
+    @app.post("/api/v1/scheduling/optimizer/propose", status_code=201)
+    def propose_schedule_optimizer_endpoint(
+        payload: ScheduleOptimizerProposeRequest,
+        context=Depends(require_perm("appointment.write")),
+    ):
+        db, clinic_id, actor = context
+        return facility_optimizer_receipts_hr.propose_optimized_slots(
+            db, clinic_id, actor, payload
+        )
+
+    @app.post("/api/v1/scheduling/optimizer/proposals/{proposal_id}/accept")
+    def accept_schedule_optimizer_endpoint(
+        proposal_id: str,
+        payload: ScheduleOptimizerAcceptRequest,
+        context=Depends(require_perm("appointment.write")),
+    ):
+        db, clinic_id, actor = context
+        return facility_optimizer_receipts_hr.accept_optimized_slot(
+            db, clinic_id, proposal_id, actor, payload
+        )
+
+    @app.get("/api/v1/finance/payments/{payment_id}/receipt-exports")
+    def list_financial_receipt_exports_endpoint(
+        payment_id: str, context=Depends(require_perm("finance.read"))
+    ):
+        db, clinic_id, _ = context
+        svc.ensure(db, m.Payment, payment_id, clinic_id)
+        rows = db.scalars(
+            select(m.FinancialReceiptExport)
+            .where(
+                m.FinancialReceiptExport.clinic_id == clinic_id,
+                m.FinancialReceiptExport.payment_id == payment_id,
+            )
+            .order_by(m.FinancialReceiptExport.created_at.desc())
+        ).all()
+        return [doc(r) for r in rows]
+
+    @app.post("/api/v1/finance/payments/{payment_id}/receipt-exports", status_code=201)
+    def export_financial_receipt_endpoint(
+        payment_id: str,
+        payload: FinancialReceiptExportCreate,
+        ctx_tuple=Depends(require_principal_perm("finance.write")),
+    ):
+        db, clinic_id, actor, principal = ctx_tuple
+        return doc(
+            facility_optimizer_receipts_hr.export_financial_receipt(
+                db,
+                clinic_id,
+                payment_id,
+                principal.staff_id,
+                actor,
+                cfg.auth_secret,
+                payload,
+            )
+        )
+
+    @app.get("/api/v1/hr/attendance")
+    def list_staff_attendance_endpoint(context=Depends(require_perm("operations.read"))):
+        db, clinic_id, _ = context
+        rows = db.scalars(
+            select(m.StaffAttendanceLog)
+            .where(m.StaffAttendanceLog.clinic_id == clinic_id)
+            .order_by(m.StaffAttendanceLog.check_in_at.desc())
+        ).all()
+        return [doc(r) for r in rows]
+
+    @app.post("/api/v1/hr/attendance", status_code=201)
+    def record_staff_attendance_endpoint(
+        payload: StaffAttendanceCreate,
+        ctx_tuple=Depends(require_principal_perm("operations.checkin")),
+    ):
+        db, clinic_id, actor, principal = ctx_tuple
+        return doc(
+            facility_optimizer_receipts_hr.record_staff_attendance(
+                db, clinic_id, principal.staff_id, actor, payload
+            )
+        )
+
+    @app.get("/api/v1/hr/overtime-summary")
+    def get_overtime_summary_endpoint(
+        local_date_hcm: str, context=Depends(require_perm("staff.manage"))
+    ):
+        db, clinic_id, _ = context
+        return facility_optimizer_receipts_hr.get_overtime_summary(
+            db, clinic_id, local_date_hcm
+        )
+
+    @app.get("/api/v1/crm/reminder-templates")
+    def list_reminder_templates_endpoint(context=Depends(require_perm("operations.read"))):
+        db, clinic_id, _ = context
+        rows = db.scalars(
+            select(m.ReminderTemplateVersion)
+            .where(m.ReminderTemplateVersion.clinic_id == clinic_id)
+            .order_by(m.ReminderTemplateVersion.created_at.desc())
+        ).all()
+        return [doc(r) for r in rows]
+
+    @app.post("/api/v1/crm/reminder-templates", status_code=201)
+    def publish_reminder_template_endpoint(
+        payload: ReminderTemplateCreate,
+        ctx_tuple=Depends(require_principal_perm("staff.manage")),
+    ):
+        db, clinic_id, actor, principal = ctx_tuple
+        return doc(
+            comms_satisfaction_cutover.publish_reminder_template(
+                db, clinic_id, principal.staff_id, actor, payload
+            )
+        )
+
+    @app.get("/api/v1/ai/communication-drafts")
+    def list_communication_drafts_endpoint(context=Depends(require_perm("operations.read"))):
+        db, clinic_id, _ = context
+        rows = db.scalars(
+            select(m.CommunicationDraftRecord)
+            .where(m.CommunicationDraftRecord.clinic_id == clinic_id)
+            .order_by(m.CommunicationDraftRecord.created_at.desc())
+        ).all()
+        return [doc(r) for r in rows]
+
+    @app.post("/api/v1/ai/communication-drafts", status_code=201)
+    def create_communication_draft_endpoint(
+        payload: CommunicationDraftCreate,
+        ctx_tuple=Depends(require_principal_perm("operations.recall")),
+    ):
+        db, clinic_id, actor, principal = ctx_tuple
+        return doc(
+            comms_satisfaction_cutover.create_communication_draft(
+                db,
+                clinic_id,
+                principal.staff_id,
+                actor,
+                cfg.ai_assist_enabled,
+                payload,
+            )
+        )
+
+    @app.post("/api/v1/crm/satisfaction/tokens", status_code=201)
+    def issue_satisfaction_token_endpoint(
+        payload: SatisfactionTokenIssueRequest,
+        context=Depends(require_perm("operations.checkin")),
+    ):
+        db, clinic_id, actor = context
+        return comms_satisfaction_cutover.issue_satisfaction_survey_token(
+            db, clinic_id, actor, cfg.auth_secret, payload
+        )
+
+    @app.post("/api/v1/crm/satisfaction/submit", status_code=201)
+    def submit_satisfaction_survey_endpoint(
+        payload: SatisfactionSurveySubmit,
+        db: Session = Depends(get_db),
+    ):
+        return comms_satisfaction_cutover.submit_anonymous_satisfaction_survey(
+            db, cfg.auth_secret, payload
+        )
+
+    @app.get("/api/v1/crm/satisfaction/summary")
+    def get_satisfaction_summary_endpoint(context=Depends(require_perm("dashboard.read"))):
+        db, clinic_id, _ = context
+        return comms_satisfaction_cutover.get_satisfaction_summary(db, clinic_id)
+
+    @app.get("/api/v1/migration/incumbent-exports")
+    def list_incumbent_exports_endpoint(context=Depends(require_perm("migration.read"))):
+        db, clinic_id, _ = context
+        rows = db.scalars(
+            select(m.IncumbentExportPackage)
+            .where(m.IncumbentExportPackage.clinic_id == clinic_id)
+            .order_by(m.IncumbentExportPackage.created_at.desc())
+        ).all()
+        return [doc(r) for r in rows]
+
+    @app.post("/api/v1/migration/incumbent-exports", status_code=201)
+    def ingest_incumbent_export_endpoint(
+        payload: IncumbentExportIngestCreate,
+        ctx_tuple=Depends(require_principal_perm("migration.write")),
+    ):
+        db, clinic_id, actor, principal = ctx_tuple
+        return doc(
+            comms_satisfaction_cutover.ingest_incumbent_export_package(
+                db, clinic_id, principal.staff_id, actor, payload
+            )
+        )
+
+    @app.post("/api/v1/migration/incumbent-exports/{package_id}/approve-quarantine")
+    def approve_incumbent_export_endpoint(
+        package_id: str,
+        payload: IncumbentExportApproveRequest,
+        ctx_tuple=Depends(require_principal_perm("migration.write")),
+    ):
+        db, clinic_id, actor, principal = ctx_tuple
+        return doc(
+            comms_satisfaction_cutover.approve_incumbent_export_quarantine(
+                db, clinic_id, package_id, principal.staff_id, actor, payload
+            )
+        )
+
+    @app.get("/api/v1/migration/cutover-plans")
+    def list_cutover_plans_endpoint(context=Depends(require_perm("migration.read"))):
+        db, clinic_id, _ = context
+        rows = db.scalars(
+            select(m.MigrationCutoverPlan)
+            .where(m.MigrationCutoverPlan.clinic_id == clinic_id)
+            .order_by(m.MigrationCutoverPlan.created_at.desc())
+        ).all()
+        return [doc(r) for r in rows]
+
+    @app.post("/api/v1/migration/cutover-plans", status_code=201)
+    def create_cutover_plan_endpoint(
+        payload: MigrationCutoverPlanCreate,
+        ctx_tuple=Depends(require_principal_perm("staff.manage")),
+    ):
+        db, clinic_id, actor, principal = ctx_tuple
+        return doc(
+            comms_satisfaction_cutover.create_migration_cutover_plan(
+                db, clinic_id, principal.staff_id, actor, payload
+            )
         )
 
     @app.get("/api/v1/audit-events/page")

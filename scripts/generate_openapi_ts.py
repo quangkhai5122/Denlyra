@@ -491,6 +491,12 @@ def render_typescript(openapi: dict) -> str:
             "  queryOpsAssistant(payload: OpsAssistantQueryRequest) {",
             '    return this.request<{ tool_name: string; proposed_human_action: string; executed_any_write: boolean; requires_human_confirmation: boolean; read_only_result: Record<string, number> }>("POST", "ai/ops-assistant/query", payload);',
             "  }",
+            "  checkFacilityScope(scope: string) {",
+            '    return this.request<{ clinic_id: string; requested_scope: string; allowed_in_demo_scope: boolean; verification_status: string; never_inferred_from_display_name: boolean }>("GET", `org/facility-profile/scope-check?scope=${encodeURIComponent(scope)}`);',
+            "  }",
+            "  getSatisfactionSummary() {",
+            '    return this.request<{ clinic_id: string; total_responses: number; average_overall_x100: number; rating_distribution: Record<string, number>; contains_patient_identifiers: boolean }>("GET", "crm/satisfaction/summary");',
+            "  }",
             "}",
             "",
         ]

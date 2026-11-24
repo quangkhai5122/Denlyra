@@ -124,6 +124,14 @@ export interface CheckinStatusUpdate {
   notes?: string;
 }
 
+export interface CommunicationDraftCreate {
+  patient_id: string;
+  template_code: string;
+  proposed_send_at: string;
+  appointment_id?: string | null;
+  custom_context_note?: string;
+}
+
 export interface ConsentCreate {
   patient_id: string;
   purpose: "treatment" | "data_processing" | "marketing" | "financial";
@@ -224,8 +232,22 @@ export interface ExternalReferralReviewRequest {
   review_note: string;
 }
 
+export interface FacilityLicenseProfileCreate {
+  legal_entity_name_demo: string;
+  license_number_demo: string;
+  license_type: "specialist_dental_clinic" | "polyclinic_dental_dept" | "hospital_odonto_dept";
+  permitted_scopes: Array<"general_dentistry" | "prosthodontics" | "endodontics" | "orthodontics" | "oral_surgery_minor" | "implant_demo">;
+  regulating_authority_demo: string;
+  verification_status?: "unverified_synthetic" | "pending_counsel_review" | "verified_demo_only";
+}
+
 export interface FhirBundleValidateRequest {
   bundle: Record<string, unknown>;
+}
+
+export interface FinancialReceiptExportCreate {
+  export_note?: string;
+  claim_verified_bank_settlement?: boolean;
 }
 
 export interface FormFieldSchema {
@@ -263,6 +285,27 @@ export interface FormValidatePreviewRequest {
 
 export interface HTTPValidationError {
   detail?: ValidationError[];
+}
+
+export interface IncumbentExportApproveRequest {
+  review_note: string;
+}
+
+export interface IncumbentExportIngestCreate {
+  source_vendor_code: string;
+  schema_version: string;
+  export_license_confirmed: boolean;
+  export_license_note: string;
+  declared_sha256: string;
+  records: IncumbentPatientRecordInput[];
+}
+
+export interface IncumbentPatientRecordInput {
+  legacy_patient_id: string;
+  display_name_demo: string;
+  birth_year: number;
+  historical_balance_vnd: number;
+  legacy_signature_label?: "legacy_unsigned_or_paper" | "legacy_vendor_record_not_denlyra_signed";
 }
 
 export interface InstallmentScheduleCreate {
@@ -322,6 +365,15 @@ export interface MedicalRiskReviewCreate {
   cardiovascular_hypertension_state?: "present" | "explicit_negative" | "unknown" | "not_applicable" | "unanswered";
   pregnancy_nursing_state?: "present" | "explicit_negative" | "unknown" | "not_applicable" | "unanswered";
   source?: "patient_interview_demo" | "clinician_review_demo" | "legacy_record_demo";
+}
+
+export interface MigrationCutoverPlanCreate {
+  incumbent_package_id: string;
+  cutover_mode: "parallel_run_read_only_legacy" | "cutover_locked_legacy";
+  legacy_write_freeze_confirmed: boolean;
+  reconciled_patient_count: number;
+  reconciled_total_balance_vnd: number;
+  rollback_runbook_note: string;
 }
 
 export interface MilestoneChecklistCreate {
@@ -500,6 +552,14 @@ export interface PriceCatalogCreate {
   max_auto_discount_pct?: number;
 }
 
+export interface ProcedureDurationTemplateCreate {
+  procedure_code: string;
+  title_vi: string;
+  recommended_minutes: number;
+  buffer_minutes?: number;
+  fallback_minutes?: number;
+}
+
 export interface PurchaseOrderCreate {
   supplier_id: string;
   sku_id: string;
@@ -542,6 +602,15 @@ export interface RefundCreate {
   idempotency_key?: string | null;
 }
 
+export interface ReminderTemplateCreate {
+  template_code: string;
+  channel: "sms_stub" | "zalo_stub" | "email_stub" | "portal";
+  purpose_category: "appointment_care_notice" | "marketing_promo";
+  body_template_vi: string;
+  window_start_hour_hcm?: number;
+  window_end_hour_hcm?: number;
+}
+
 export interface ResourceCreateRequest {
   name: string;
   kind: "chair" | "device";
@@ -559,11 +628,40 @@ export interface RestoreDrillRequest {
   override_master_secret?: string | null;
 }
 
+export interface SatisfactionSurveySubmit {
+  clinic_id: string;
+  survey_token: string;
+  service_month: string;
+  overall_rating: number;
+  wait_time_rating: number;
+  clarity_rating: number;
+  comment?: string;
+}
+
+export interface SatisfactionTokenIssueRequest {
+  appointment_id: string;
+}
+
 export interface ScannedPageSchema {
   page_number: number;
   sha256: string;
   legible?: boolean;
   ocr_unverified_text?: string | null;
+}
+
+export interface ScheduleOptimizerAcceptRequest {
+  slot_index?: number;
+  reason_demo?: string;
+}
+
+export interface ScheduleOptimizerProposeRequest {
+  patient_id: string;
+  practitioner_id: string;
+  chair_id: string;
+  procedure_code: string;
+  window_start_at: string;
+  window_end_at: string;
+  override_duration_minutes?: number | null;
 }
 
 export interface ServiceComplaintCreate {
@@ -585,6 +683,13 @@ export interface SkuCreate {
   unit: string;
   lot_tracked?: boolean;
   reorder_threshold?: number;
+}
+
+export interface StaffAttendanceCreate {
+  staff_id: string;
+  check_in_at: string;
+  check_out_at: string;
+  note?: string;
 }
 
 export interface StaffCreateRequest {
@@ -694,6 +799,8 @@ export interface WaitlistCreate {
 
 export const OPENAPI_OPERATIONS = [
   "GET /",
+  "GET /api/v1/ai/communication-drafts",
+  "POST /api/v1/ai/communication-drafts",
   "POST /api/v1/ai/drafts/dictation-extract",
   "POST /api/v1/ai/drafts/timeline-summary",
   "POST /api/v1/ai/drafts/{draft_id}/accept-into-note-draft",
@@ -751,6 +858,11 @@ export const OPENAPI_OPERATIONS = [
   "POST /api/v1/consents/{consent_id}/withdraw",
   "GET /api/v1/crm/complaints",
   "POST /api/v1/crm/complaints",
+  "GET /api/v1/crm/reminder-templates",
+  "POST /api/v1/crm/reminder-templates",
+  "POST /api/v1/crm/satisfaction/submit",
+  "GET /api/v1/crm/satisfaction/summary",
+  "POST /api/v1/crm/satisfaction/tokens",
   "GET /api/v1/dashboard",
   "GET /api/v1/demo/context",
   "GET /api/v1/encounters",
@@ -783,11 +895,16 @@ export const OPENAPI_OPERATIONS = [
   "POST /api/v1/finance/installments/{schedule_id}/tranches/{tranche_id}/log-reminder",
   "GET /api/v1/finance/payments",
   "POST /api/v1/finance/payments",
+  "GET /api/v1/finance/payments/{payment_id}/receipt-exports",
+  "POST /api/v1/finance/payments/{payment_id}/receipt-exports",
   "POST /api/v1/finance/payments/{payment_id}/refunds",
   "GET /api/v1/finance/price-catalog",
   "POST /api/v1/finance/price-catalog",
   "GET /api/v1/finance/reconciliations",
   "POST /api/v1/finance/reconciliations",
+  "GET /api/v1/hr/attendance",
+  "POST /api/v1/hr/attendance",
+  "GET /api/v1/hr/overtime-summary",
   "GET /api/v1/interop/fhir/r4/patients/{patient_id}/bundle",
   "POST /api/v1/interop/fhir/r4/validate-bundle",
   "POST /api/v1/inventory/adjustments",
@@ -813,6 +930,11 @@ export const OPENAPI_OPERATIONS = [
   "POST /api/v1/lab-cases/{lab_id}/state",
   "GET /api/v1/lab-portal/cases/{grant_token}",
   "POST /api/v1/lab-portal/cases/{grant_token}/milestones",
+  "GET /api/v1/migration/cutover-plans",
+  "POST /api/v1/migration/cutover-plans",
+  "GET /api/v1/migration/incumbent-exports",
+  "POST /api/v1/migration/incumbent-exports",
+  "POST /api/v1/migration/incumbent-exports/{package_id}/approve-quarantine",
   "POST /api/v1/migrations/paper-batches",
   "POST /api/v1/migrations/paper-batches/{batch_id}/items",
   "GET /api/v1/migrations/paper-batches/{batch_id}/reconciliation",
@@ -848,6 +970,9 @@ export const OPENAPI_OPERATIONS = [
   "POST /api/v1/operations/waitlist/{entry_id}/confirm-booking",
   "POST /api/v1/operations/waitlist/{entry_id}/prepare-outreach",
   "POST /api/v1/org/branch-scope-grants",
+  "GET /api/v1/org/facility-profile",
+  "POST /api/v1/org/facility-profile",
+  "GET /api/v1/org/facility-profile/scope-check",
   "GET /api/v1/org/multi-branch-aggregates",
   "POST /api/v1/patient-portal/appointments/{appointment_id}/confirm",
   "POST /api/v1/patient-portal/appointments/{appointment_id}/reschedule-requests",
@@ -883,6 +1008,11 @@ export const OPENAPI_OPERATIONS = [
   "GET /api/v1/reports/dictionary",
   "GET /api/v1/reports/kpi-lineage",
   "POST /api/v1/resources",
+  "GET /api/v1/scheduling/duration-estimate",
+  "GET /api/v1/scheduling/duration-templates",
+  "POST /api/v1/scheduling/duration-templates",
+  "POST /api/v1/scheduling/optimizer/proposals/{proposal_id}/accept",
+  "POST /api/v1/scheduling/optimizer/propose",
   "GET /api/v1/signed-download/{grant_token}",
   "POST /api/v1/staff",
   "POST /api/v1/staff/{staff_id}/deactivate",
@@ -1296,5 +1426,11 @@ export class DenlyraApiClient {
   }
   queryOpsAssistant(payload: OpsAssistantQueryRequest) {
     return this.request<{ tool_name: string; proposed_human_action: string; executed_any_write: boolean; requires_human_confirmation: boolean; read_only_result: Record<string, number> }>("POST", "ai/ops-assistant/query", payload);
+  }
+  checkFacilityScope(scope: string) {
+    return this.request<{ clinic_id: string; requested_scope: string; allowed_in_demo_scope: boolean; verification_status: string; never_inferred_from_display_name: boolean }>("GET", `org/facility-profile/scope-check?scope=${encodeURIComponent(scope)}`);
+  }
+  getSatisfactionSummary() {
+    return this.request<{ clinic_id: string; total_responses: number; average_overall_x100: number; rating_distribution: Record<string, number>; contains_patient_identifiers: boolean }>("GET", "crm/satisfaction/summary");
   }
 }

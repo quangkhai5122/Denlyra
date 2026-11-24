@@ -1536,3 +1536,254 @@ class ServiceComplaintCase(Base):
     __table_args__ = (
         ForeignKeyConstraint(["clinic_id", "patient_id"], ["patient.clinic_id", "patient.id"]),
     )
+
+
+class FacilityLicenseProfile(Base):
+    __tablename__ = "facility_license_profile"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    version_number: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    legal_entity_name_demo: Mapped[str] = mapped_column(String(200), nullable=False)
+    license_number_demo: Mapped[str] = mapped_column(String(80), nullable=False)
+    license_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    permitted_scopes_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    regulating_authority_demo: Mapped[str] = mapped_column(String(160), nullable=False)
+    verification_status: Mapped[str] = mapped_column(
+        String(40), nullable=False, default="unverified_synthetic"
+    )
+    updated_by_staff_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    created_at: Mapped[datetime] = created_col()
+    __table_args__ = (
+        UniqueConstraint(
+            "clinic_id", "version_number", name="uq_facility_profile_clinic_ver"
+        ),
+    )
+
+
+class ProcedureDurationTemplate(Base):
+    __tablename__ = "procedure_duration_template"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    procedure_code: Mapped[str] = mapped_column(String(60), nullable=False)
+    version_number: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    title_vi: Mapped[str] = mapped_column(String(180), nullable=False)
+    recommended_minutes: Mapped[int] = mapped_column(Integer, nullable=False)
+    buffer_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    fallback_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=30)
+    approved_by_staff_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    created_at: Mapped[datetime] = created_col()
+    __table_args__ = (
+        CheckConstraint("recommended_minutes >= 15", name="ck_proc_dur_rec_min"),
+        CheckConstraint("buffer_minutes >= 0", name="ck_proc_dur_buf_min"),
+        UniqueConstraint(
+            "clinic_id", "procedure_code", "version_number", name="uq_proc_dur_clinic_code_ver"
+        ),
+    )
+
+
+class ScheduleOptimizerProposal(Base):
+    __tablename__ = "schedule_optimizer_proposal"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    patient_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    practitioner_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    chair_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    procedure_code: Mapped[str] = mapped_column(String(60), nullable=False)
+    window_start_at: Mapped[datetime] = mapped_column(DateTime(), nullable=False)
+    window_end_at: Mapped[datetime] = mapped_column(DateTime(), nullable=False)
+    duration_minutes: Mapped[int] = mapped_column(Integer, nullable=False)
+    proposed_slots_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    solver_engine: Mapped[str] = mapped_column(
+        String(48), nullable=False, default="deterministic_constraint_grid_v1"
+    )
+    status: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="proposed_pending_human"
+    )
+    accepted_appointment_id: Mapped[str | None] = mapped_column(String(36))
+    actor_demo: Mapped[str] = mapped_column(String(100), nullable=False)
+    created_at: Mapped[datetime] = created_col()
+    __table_args__ = (
+        CheckConstraint("window_end_at > window_start_at", name="ck_opt_prop_window"),
+        ForeignKeyConstraint(["clinic_id", "patient_id"], ["patient.clinic_id", "patient.id"]),
+    )
+
+
+class FinancialReceiptExport(Base):
+    __tablename__ = "financial_receipt_export"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    patient_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    payment_id: Mapped[str] = mapped_column(ForeignKey("payment.id"), nullable=False)
+    receipt_number: Mapped[str] = mapped_column(String(64), nullable=False)
+    amount_vnd: Mapped[int] = mapped_column(Integer, nullable=False)
+    payment_method: Mapped[str] = mapped_column(String(24), nullable=False)
+    allocated_charges_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    ledger_entry_ids_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    export_note: Mapped[str] = mapped_column(String(260), nullable=False, default="")
+    payload_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    signature_hmac_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    synthetic_non_bank_receipt: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True
+    )
+    exported_by_staff_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    created_at: Mapped[datetime] = created_col()
+    __table_args__ = (
+        CheckConstraint("amount_vnd > 0", name="ck_receipt_export_positive"),
+        UniqueConstraint("clinic_id", "receipt_number", name="uq_receipt_export_clinic_num"),
+        ForeignKeyConstraint(["clinic_id", "patient_id"], ["patient.clinic_id", "patient.id"]),
+    )
+
+
+class StaffAttendanceLog(Base):
+    __tablename__ = "staff_attendance_log"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    staff_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    check_in_at: Mapped[datetime] = mapped_column(DateTime(), nullable=False)
+    check_out_at: Mapped[datetime] = mapped_column(DateTime(), nullable=False)
+    local_date_hcm: Mapped[str] = mapped_column(String(10), nullable=False)
+    worked_minutes: Mapped[int] = mapped_column(Integer, nullable=False)
+    regular_minutes: Mapped[int] = mapped_column(Integer, nullable=False)
+    overtime_minutes: Mapped[int] = mapped_column(Integer, nullable=False)
+    standard_daily_limit_minutes: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=480
+    )
+    note: Mapped[str] = mapped_column(String(260), nullable=False, default="")
+    recorded_by_staff_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    created_at: Mapped[datetime] = created_col()
+    __table_args__ = (
+        CheckConstraint("check_out_at > check_in_at", name="ck_attendance_valid_range"),
+        CheckConstraint("worked_minutes > 0", name="ck_attendance_worked_positive"),
+        ForeignKeyConstraint(["clinic_id", "staff_id"], ["staff.clinic_id", "staff.id"]),
+    )
+
+
+class ReminderTemplateVersion(Base):
+    __tablename__ = "reminder_template_version"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    template_code: Mapped[str] = mapped_column(String(60), nullable=False)
+    version_number: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    channel: Mapped[str] = mapped_column(String(24), nullable=False)
+    purpose_category: Mapped[str] = mapped_column(String(32), nullable=False)
+    body_template_vi: Mapped[str] = mapped_column(String(400), nullable=False)
+    window_start_hour_hcm: Mapped[int] = mapped_column(Integer, nullable=False, default=8)
+    window_end_hour_hcm: Mapped[int] = mapped_column(Integer, nullable=False, default=20)
+    reviewed_by_staff_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    created_at: Mapped[datetime] = created_col()
+    __table_args__ = (
+        CheckConstraint(
+            "window_end_hour_hcm > window_start_hour_hcm", name="ck_rem_tpl_window"
+        ),
+        UniqueConstraint(
+            "clinic_id", "template_code", "version_number", name="uq_rem_tpl_clinic_code_ver"
+        ),
+    )
+
+
+class CommunicationDraftRecord(Base):
+    __tablename__ = "communication_draft_record"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    patient_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    appointment_id: Mapped[str | None] = mapped_column(String(36))
+    template_id: Mapped[str] = mapped_column(
+        ForeignKey("reminder_template_version.id"), nullable=False
+    )
+    template_version_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    purpose_category: Mapped[str] = mapped_column(String(32), nullable=False)
+    proposed_send_hour_hcm: Mapped[int] = mapped_column(Integer, nullable=False)
+    rendered_draft_text: Mapped[str] = mapped_column(Text, nullable=False)
+    escalation_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    auto_sent: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    status: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="draft_pending_staff_review"
+    )
+    drafted_by_staff_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    created_at: Mapped[datetime] = created_col()
+    __table_args__ = (
+        CheckConstraint("NOT auto_sent", name="ck_comm_draft_no_auto_send"),
+        ForeignKeyConstraint(["clinic_id", "patient_id"], ["patient.clinic_id", "patient.id"]),
+    )
+
+
+class SatisfactionTokenReceipt(Base):
+    __tablename__ = "satisfaction_token_receipt"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    token_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    used_at: Mapped[datetime] = created_col()
+    __table_args__ = (
+        UniqueConstraint("clinic_id", "token_sha256", name="uq_satisfaction_token_once"),
+    )
+
+
+class PatientSatisfactionResponse(Base):
+    __tablename__ = "patient_satisfaction_response"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    service_month: Mapped[str] = mapped_column(String(7), nullable=False)
+    overall_rating: Mapped[int] = mapped_column(Integer, nullable=False)
+    wait_time_rating: Mapped[int] = mapped_column(Integer, nullable=False)
+    clarity_rating: Mapped[int] = mapped_column(Integer, nullable=False)
+    sanitized_comment: Mapped[str] = mapped_column(String(400), nullable=False, default="")
+    created_at: Mapped[datetime] = created_col()
+    __table_args__ = (
+        CheckConstraint("overall_rating BETWEEN 1 AND 5", name="ck_sat_overall_1_5"),
+        CheckConstraint("wait_time_rating BETWEEN 1 AND 5", name="ck_sat_wait_1_5"),
+        CheckConstraint("clarity_rating BETWEEN 1 AND 5", name="ck_sat_clarity_1_5"),
+    )
+
+
+class IncumbentExportPackage(Base):
+    __tablename__ = "incumbent_export_package"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    source_vendor_code: Mapped[str] = mapped_column(String(60), nullable=False)
+    schema_version: Mapped[str] = mapped_column(String(30), nullable=False)
+    export_license_note: Mapped[str] = mapped_column(String(300), nullable=False)
+    declared_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    computed_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    record_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    total_balance_vnd: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    payload_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    validation_status: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="quarantined_verified"
+    )
+    review_status: Mapped[str] = mapped_column(
+        String(36), nullable=False, default="pending_reviewer_signoff"
+    )
+    uploader_staff_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    reviewer_staff_id: Mapped[str | None] = mapped_column(String(36))
+    review_note: Mapped[str | None] = mapped_column(String(300))
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime())
+    created_at: Mapped[datetime] = created_col()
+    __table_args__ = (
+        UniqueConstraint(
+            "clinic_id",
+            "source_vendor_code",
+            "declared_sha256",
+            name="uq_incumbent_pkg_clinic_vendor_sha",
+        ),
+    )
+
+
+class MigrationCutoverPlan(Base):
+    __tablename__ = "migration_cutover_plan"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    incumbent_package_id: Mapped[str] = mapped_column(
+        ForeignKey("incumbent_export_package.id"), nullable=False
+    )
+    cutover_mode: Mapped[str] = mapped_column(String(36), nullable=False)
+    legacy_write_freeze_confirmed: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+    reconciled_patient_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    reconciled_total_balance_vnd: Mapped[int] = mapped_column(Integer, nullable=False)
+    double_entry_guard_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True
+    )
+    rollback_runbook_note: Mapped[str] = mapped_column(String(300), nullable=False)
+    approved_by_staff_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    created_at: Mapped[datetime] = created_col()
