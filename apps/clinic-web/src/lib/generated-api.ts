@@ -27,6 +27,17 @@ export interface AdversarialSecurityRunRequest {
   traversal_filenames?: string[];
 }
 
+export interface AiAdaptationEvaluateRequest {
+  adapter_code: string;
+  base_model_digest: string;
+  dataset_license_id: string;
+  deidentification_verified: boolean;
+  dataset_sample_texts: string[];
+  baseline_f1_bp: number;
+  candidate_f1_bp: number;
+  min_required_lift_bp?: number;
+}
+
 export interface AllocationCreate {
   charge_id: string;
   payment_id: string;
@@ -252,6 +263,22 @@ export interface DocumentSyntheticSignRequest {
   simulate_failure?: "timeout" | "signature_mismatch" | null;
 }
 
+export interface EmailSandboxSendCreate {
+  patient_id: string;
+  sender_id: string;
+  purpose: "data_processing" | "marketing";
+  subject_minimized: string;
+  body_safe_text: string;
+}
+
+export interface EmailVerifiedSenderCreate {
+  sender_address: string;
+  spf_verified: boolean;
+  dkim_verified: boolean;
+  dmarc_verified: boolean;
+  hourly_rate_limit?: number;
+}
+
 export interface EncounterCreate {
   patient_id: string;
   practitioner_id: string;
@@ -356,6 +383,14 @@ export interface HTTPValidationError {
   detail?: ValidationError[];
 }
 
+export interface IacBlueprintValidateRequest {
+  blueprint_name: string;
+  primary_region: string;
+  dpa_contract_reference: string;
+  environment_variables?: Record<string, string>;
+  apply_live_cloud_provisioning?: boolean;
+}
+
 export interface IncumbentExportApproveRequest {
   review_note: string;
 }
@@ -391,6 +426,21 @@ export interface InstallmentTrancheInput {
 export interface InstantiateSpecialtyTemplateRequest {
   patient_id: string;
   template_id: string;
+}
+
+export interface InsuranceClaimDraftCreate {
+  patient_id: string;
+  partner_id: string;
+  charge_id: string;
+  claimed_amount_vnd: number;
+  auto_settle_as_paid?: boolean;
+}
+
+export interface InsurancePartnerCreate {
+  partner_code: string;
+  partner_name: string;
+  integration_kind?: "private_dental_tpa_sandbox" | "government_bhyt_portal";
+  contract_active?: boolean;
 }
 
 export interface InternalHandoffCreate {
@@ -681,6 +731,13 @@ export interface PlanReassessmentCreate {
   owner_role?: "dentist" | "medical_director" | "assistant" | "treatment_coordinator";
 }
 
+export interface PlanReviewAttestationCreate {
+  expected_version_number: number;
+  credential_verified_in_demo?: boolean;
+  approval_mode?: "demo_simulation_only" | "legal_clinical_approval";
+  review_note_vi: string;
+}
+
 export interface PortalGrantCreate {
   patient_id: string;
   actor_kind?: "self" | "guardian";
@@ -924,6 +981,20 @@ export interface SkuCreate {
   reorder_threshold?: number;
 }
 
+export interface SmsDeliveryReceiptCreate {
+  provider_dlr_code: string;
+  carrier_status: "carrier_delivered" | "handset_rejected" | "expired_unreached";
+  opt_out_triggered?: boolean;
+}
+
+export interface SmsSandboxDispatchCreate {
+  patient_id: string;
+  brandname_sender: string;
+  purpose: "data_processing" | "marketing";
+  message_ascii_or_ucs2: string;
+  idempotency_key: string;
+}
+
 export interface SpecialtyPlanTemplateCreate {
   template_code: string;
   specialty: "implant" | "orthodontics" | "endodontics" | "prosthodontics" | "pediatric";
@@ -1100,8 +1171,26 @@ export interface WaitlistCreate {
   service_note_minimized: string;
 }
 
+export interface ZaloZnsContractCreate {
+  oa_id_demo: string;
+  zns_template_id: string;
+  official_api_only?: boolean;
+  legal_basis_purpose: "data_processing" | "marketing";
+  price_per_message_vnd: number;
+  pricing_confirmed: boolean;
+  allowed_param_keys: string[];
+}
+
+export interface ZaloZnsPreviewDispatchRequest {
+  patient_id: string;
+  contract_id: string;
+  template_params?: Record<string, string>;
+}
+
 export const OPENAPI_OPERATIONS = [
   "GET /",
+  "GET /api/v1/ai/adaptation-runs",
+  "POST /api/v1/ai/adaptation-runs/evaluate",
   "POST /api/v1/ai/appointments/{appointment_id}/noshow-risk",
   "GET /api/v1/ai/communication-drafts",
   "POST /api/v1/ai/communication-drafts",
@@ -1169,6 +1258,15 @@ export const OPENAPI_OPERATIONS = [
   "POST /api/v1/crm/appointments/{appointment_id}/cancellation-outreach",
   "GET /api/v1/crm/cancellation-outreach-policies",
   "POST /api/v1/crm/cancellation-outreach-policies",
+  "POST /api/v1/crm/channels/email/send-sandbox",
+  "GET /api/v1/crm/channels/email/senders",
+  "POST /api/v1/crm/channels/email/senders",
+  "GET /api/v1/crm/channels/sms/dispatches",
+  "POST /api/v1/crm/channels/sms/dispatches/{dispatch_id}/dlr-receipt",
+  "POST /api/v1/crm/channels/sms/send-sandbox",
+  "GET /api/v1/crm/channels/zalo-zns/contracts",
+  "POST /api/v1/crm/channels/zalo-zns/contracts",
+  "POST /api/v1/crm/channels/zalo-zns/preview-dispatch",
   "GET /api/v1/crm/complaints",
   "POST /api/v1/crm/complaints",
   "GET /api/v1/crm/reminder-templates",
@@ -1208,6 +1306,10 @@ export const OPENAPI_OPERATIONS = [
   "GET /api/v1/finance/installments",
   "POST /api/v1/finance/installments",
   "POST /api/v1/finance/installments/{schedule_id}/tranches/{tranche_id}/log-reminder",
+  "GET /api/v1/finance/insurance-claims",
+  "POST /api/v1/finance/insurance-claims",
+  "GET /api/v1/finance/insurance-partners",
+  "POST /api/v1/finance/insurance-partners",
   "GET /api/v1/finance/payments",
   "POST /api/v1/finance/payments",
   "GET /api/v1/finance/payments/{payment_id}/receipt-exports",
@@ -1301,6 +1403,8 @@ export const OPENAPI_OPERATIONS = [
   "POST /api/v1/operations/waitlist",
   "POST /api/v1/operations/waitlist/{entry_id}/confirm-booking",
   "POST /api/v1/operations/waitlist/{entry_id}/prepare-outreach",
+  "GET /api/v1/ops/iac-blueprints",
+  "POST /api/v1/ops/iac-blueprints/validate",
   "GET /api/v1/ops/load-benchmarks",
   "POST /api/v1/ops/load-benchmarks/run",
   "GET /api/v1/ops/multibranch-operators",
@@ -1401,6 +1505,8 @@ export const OPENAPI_OPERATIONS = [
   "GET /api/v1/treatment-plans/{plan_id}/lifecycle",
   "POST /api/v1/treatment-plans/{plan_id}/lifecycle",
   "POST /api/v1/treatment-plans/{plan_id}/reassessments",
+  "GET /api/v1/treatment-plans/{plan_id}/review-attestations",
+  "POST /api/v1/treatment-plans/{plan_id}/review-attestations",
   "POST /api/v1/treatment-plans/{plan_id}/tasks",
   "GET /api/v1/treatment-plans/{plan_id}/timeline",
   "POST /api/v1/treatment-plans/{plan_id}/versions",
@@ -1824,5 +1930,8 @@ export class DenlyraApiClient {
   }
   runAdversarialSecuritySuite(payload?: AdversarialSecurityRunRequest) {
     return this.request<{ id: string; ssrf_probes_blocked: number; traversal_probes_blocked: number; all_vectors_blocked: boolean; independent_external_pentest_complete: boolean }>("POST", "security/adversarial-suite/run", payload ?? {});
+  }
+  validateIacBlueprint(payload: IacBlueprintValidateRequest) {
+    return this.request<{ id: string; blueprint_name: string; primary_region: string; secrets_externalized: boolean; live_cloud_provisioned: boolean; blueprint_sha256: string }>("POST", "ops/iac-blueprints/validate", payload);
   }
 }

@@ -2133,6 +2133,29 @@ export default function ClinicWorkspacePage() {
               >
                 Chạy Đo kiểm Độ trễ &amp; Kiểm thử Đối kháng Bảo mật (OPS-008 / SEC-014)
               </button>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={async () => {
+                  setConflictMsg("");
+                  const r = await client.validateIacBlueprint({
+                    blueprint_name: "vn-hcm-sovereign-demo",
+                    primary_region: "vn-ho-chi-minh-1",
+                    dpa_contract_reference: "DPA-SYN-2026-HCM",
+                    environment_variables: {
+                      DENLYRA_DB_DSN: "secret_ref://vault/vn-hcm/db",
+                      DENLYRA_KEK_ID: "secret_ref://kms/vn-hcm/kek",
+                    },
+                    apply_live_cloud_provisioning: false,
+                  });
+                  if (!r.ok) return handleApiFailure(r.status, r.detail, r.conflict);
+                  setStatusMsg(
+                    `Kiểm định IaC Vùng Việt Nam (OPS-003): region=${r.data.primary_region}, secrets_externalized=${String(r.data.secrets_externalized)}, live_cloud_provisioned=${String(r.data.live_cloud_provisioned)}, sha256=${r.data.blueprint_sha256.slice(0, 16)}…`,
+                  );
+                }}
+              >
+                Kiểm định Blueprint IaC Vùng Việt Nam &amp; Tách Bí mật (OPS-003)
+              </button>
             </div>
           </section>
         </div>

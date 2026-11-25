@@ -23,6 +23,7 @@ from . import (
     archive_dr,
     audit_chain,
     auth,
+    channel_contracts_zalo_sms_email,
     clinical_lifecycle,
     comms_satisfaction_cutover,
     continuity_governance,
@@ -30,6 +31,7 @@ from . import (
     facility_optimizer_receipts_hr,
     fhir_interop,
     governance_analytics,
+    iac_insurance_lora_plan_attestation,
     inventory,
     models as m,
     odontogram_referrals_export,
@@ -3552,6 +3554,225 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         db, clinic_id, actor = context
         return doc(
             dicom_speech_accounting_security.evaluate_production_release_gate(
+                db, clinic_id, actor, payload
+            )
+        )
+
+    @app.get("/api/v1/ops/iac-blueprints")
+    def list_iac_blueprints_endpoint(context=Depends(require_perm("staff.manage"))):
+        db, clinic_id, _ = context
+        rows = db.scalars(
+            select(m.IacBlueprintValidation)
+            .where(m.IacBlueprintValidation.clinic_id == clinic_id)
+            .order_by(m.IacBlueprintValidation.created_at.desc())
+        ).all()
+        return [doc(r) for r in rows]
+
+    @app.post("/api/v1/ops/iac-blueprints/validate", status_code=201)
+    def validate_iac_blueprint_endpoint(
+        payload: sch.IacBlueprintValidateRequest,
+        context=Depends(require_perm("staff.manage")),
+    ):
+        db, clinic_id, actor = context
+        return doc(
+            iac_insurance_lora_plan_attestation.validate_iac_blueprint(
+                db, clinic_id, actor, payload
+            )
+        )
+
+    @app.get("/api/v1/finance/insurance-partners")
+    def list_insurance_partners_endpoint(context=Depends(require_perm("finance.read"))):
+        db, clinic_id, _ = context
+        rows = db.scalars(
+            select(m.InsurancePartnerContract)
+            .where(m.InsurancePartnerContract.clinic_id == clinic_id)
+            .order_by(m.InsurancePartnerContract.created_at.desc())
+        ).all()
+        return [doc(r) for r in rows]
+
+    @app.post("/api/v1/finance/insurance-partners", status_code=201)
+    def register_insurance_partner_endpoint(
+        payload: sch.InsurancePartnerCreate,
+        ctx_tuple=Depends(require_principal_perm("staff.manage")),
+    ):
+        db, clinic_id, actor, principal = ctx_tuple
+        return doc(
+            iac_insurance_lora_plan_attestation.register_insurance_partner(
+                db, clinic_id, principal.staff_id, actor, payload
+            )
+        )
+
+    @app.get("/api/v1/finance/insurance-claims")
+    def list_insurance_claims_endpoint(context=Depends(require_perm("finance.read"))):
+        db, clinic_id, _ = context
+        rows = db.scalars(
+            select(m.InsuranceClaimDraft)
+            .where(m.InsuranceClaimDraft.clinic_id == clinic_id)
+            .order_by(m.InsuranceClaimDraft.created_at.desc())
+        ).all()
+        return [doc(r) for r in rows]
+
+    @app.post("/api/v1/finance/insurance-claims", status_code=201)
+    def create_insurance_claim_endpoint(
+        payload: sch.InsuranceClaimDraftCreate,
+        context=Depends(require_perm("finance.write")),
+    ):
+        db, clinic_id, actor = context
+        return doc(
+            iac_insurance_lora_plan_attestation.create_insurance_claim_draft(
+                db, clinic_id, actor, payload
+            )
+        )
+
+    @app.get("/api/v1/ai/adaptation-runs")
+    def list_ai_adaptation_runs_endpoint(context=Depends(require_perm("ai.evaluate"))):
+        db, clinic_id, _ = context
+        rows = db.scalars(
+            select(m.AiAdaptationRun)
+            .where(m.AiAdaptationRun.clinic_id == clinic_id)
+            .order_by(m.AiAdaptationRun.created_at.desc())
+        ).all()
+        return [doc(r) for r in rows]
+
+    @app.post("/api/v1/ai/adaptation-runs/evaluate", status_code=201)
+    def evaluate_ai_adaptation_run_endpoint(
+        payload: sch.AiAdaptationEvaluateRequest,
+        context=Depends(require_perm("ai.evaluate")),
+    ):
+        db, clinic_id, actor = context
+        return doc(
+            iac_insurance_lora_plan_attestation.evaluate_ai_adaptation_run(
+                db, clinic_id, actor, cfg.ai_assist_enabled, payload
+            )
+        )
+
+    @app.get("/api/v1/treatment-plans/{plan_id}/review-attestations")
+    def list_plan_review_attestations_endpoint(
+        plan_id: str,
+        context=Depends(require_perm("plan.read")),
+    ):
+        db, clinic_id, _ = context
+        svc.ensure(db, m.TreatmentPlan, plan_id, clinic_id)
+        rows = db.scalars(
+            select(m.PlanReviewAttestation)
+            .where(
+                m.PlanReviewAttestation.clinic_id == clinic_id,
+                m.PlanReviewAttestation.plan_id == plan_id,
+            )
+            .order_by(m.PlanReviewAttestation.version_number.desc())
+        ).all()
+        return [doc(r) for r in rows]
+
+    @app.post("/api/v1/treatment-plans/{plan_id}/review-attestations", status_code=201)
+    def attest_plan_version_endpoint(
+        plan_id: str,
+        payload: sch.PlanReviewAttestationCreate,
+        ctx_tuple=Depends(require_principal_perm("plan.review")),
+    ):
+        db, clinic_id, actor, principal = ctx_tuple
+        return doc(
+            iac_insurance_lora_plan_attestation.attest_plan_version_simulation(
+                db, clinic_id, plan_id, principal.staff_id, principal.role, actor, payload
+            )
+        )
+
+    @app.get("/api/v1/crm/channels/zalo-zns/contracts")
+    def list_zalo_zns_contracts_endpoint(context=Depends(require_perm("operations.read"))):
+        db, clinic_id, _ = context
+        rows = db.scalars(
+            select(m.ZaloZnsContract)
+            .where(m.ZaloZnsContract.clinic_id == clinic_id)
+            .order_by(m.ZaloZnsContract.created_at.desc())
+        ).all()
+        return [doc(r) for r in rows]
+
+    @app.post("/api/v1/crm/channels/zalo-zns/contracts", status_code=201)
+    def create_zalo_zns_contract_endpoint(
+        payload: sch.ZaloZnsContractCreate,
+        ctx_tuple=Depends(require_principal_perm("staff.manage")),
+    ):
+        db, clinic_id, actor, principal = ctx_tuple
+        return doc(
+            channel_contracts_zalo_sms_email.create_zalo_zns_contract(
+                db, clinic_id, principal.staff_id, actor, payload
+            )
+        )
+
+    @app.post("/api/v1/crm/channels/zalo-zns/preview-dispatch", status_code=201)
+    def preview_zalo_zns_dispatch_endpoint(
+        payload: sch.ZaloZnsPreviewDispatchRequest,
+        context=Depends(require_perm("operations.recall")),
+    ):
+        db, clinic_id, actor = context
+        return doc(
+            channel_contracts_zalo_sms_email.preview_zalo_zns_dispatch(
+                db, clinic_id, actor, payload
+            )
+        )
+
+    @app.get("/api/v1/crm/channels/sms/dispatches")
+    def list_sms_sandbox_dispatches_endpoint(context=Depends(require_perm("operations.read"))):
+        db, clinic_id, _ = context
+        rows = db.scalars(
+            select(m.SmsSandboxDispatch)
+            .where(m.SmsSandboxDispatch.clinic_id == clinic_id)
+            .order_by(m.SmsSandboxDispatch.created_at.desc())
+        ).all()
+        return [doc(r) for r in rows]
+
+    @app.post("/api/v1/crm/channels/sms/send-sandbox", status_code=201)
+    def send_sms_sandbox_endpoint(
+        payload: sch.SmsSandboxDispatchCreate,
+        context=Depends(require_perm("operations.recall")),
+    ):
+        db, clinic_id, actor = context
+        return doc(
+            channel_contracts_zalo_sms_email.send_sms_sandbox(db, clinic_id, actor, payload)
+        )
+
+    @app.post("/api/v1/crm/channels/sms/dispatches/{dispatch_id}/dlr-receipt", status_code=201)
+    def record_sms_dlr_receipt_endpoint(
+        dispatch_id: str,
+        payload: sch.SmsDeliveryReceiptCreate,
+        context=Depends(require_perm("operations.recall")),
+    ):
+        db, clinic_id, actor = context
+        return doc(
+            channel_contracts_zalo_sms_email.record_sms_dlr_receipt(
+                db, clinic_id, dispatch_id, actor, payload
+            )
+        )
+
+    @app.get("/api/v1/crm/channels/email/senders")
+    def list_email_senders_endpoint(context=Depends(require_perm("operations.read"))):
+        db, clinic_id, _ = context
+        rows = db.scalars(
+            select(m.EmailVerifiedSender)
+            .where(m.EmailVerifiedSender.clinic_id == clinic_id)
+            .order_by(m.EmailVerifiedSender.created_at.desc())
+        ).all()
+        return [doc(r) for r in rows]
+
+    @app.post("/api/v1/crm/channels/email/senders", status_code=201)
+    def register_email_sender_endpoint(
+        payload: sch.EmailVerifiedSenderCreate,
+        ctx_tuple=Depends(require_principal_perm("staff.manage")),
+    ):
+        db, clinic_id, actor, principal = ctx_tuple
+        return doc(
+            channel_contracts_zalo_sms_email.register_email_sender(
+                db, clinic_id, principal.staff_id, actor, payload
+            )
+        )
+
+    @app.post("/api/v1/crm/channels/email/send-sandbox", status_code=201)
+    def send_email_sandbox_endpoint(
+        payload: sch.EmailSandboxSendCreate,
+        context=Depends(require_perm("operations.recall")),
+    ):
+        db, clinic_id, actor = context
+        return doc(
+            channel_contracts_zalo_sms_email.send_email_sandbox(
                 db, clinic_id, actor, payload
             )
         )

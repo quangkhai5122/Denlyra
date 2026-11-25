@@ -28,6 +28,8 @@ jobs:
         run: python scripts/run_ai_eval_harness.py
       - name: Verify hash-chained tamper-evident audit journal
         run: python scripts/verify_audit_chain.py
+      - name: Run reproducible local latency and capacity benchmark
+        run: python scripts/run_load_benchmark.py
       - name: Verify generated OpenAPI TypeScript client
         run: python scripts/generate_openapi_ts.py --check
       - name: Syntax-check backend
@@ -37,7 +39,7 @@ jobs:
       - name: Lint Python
         run: python -m ruff check backend/src backend/tests
       - name: Lint baseline utilities
-        run: python -m ruff check --config backend/pyproject.toml scripts/smoke_baseline.py scripts/update_manifest.py scripts/verify_artifact.py scripts/verify_postgres_live.py scripts/run_dr_restore_drill.py scripts/run_ai_eval_harness.py scripts/verify_audit_chain.py scripts/generate_openapi_ts.py
+        run: python -m ruff check --config backend/pyproject.toml scripts/smoke_baseline.py scripts/update_manifest.py scripts/verify_artifact.py scripts/verify_postgres_live.py scripts/run_dr_restore_drill.py scripts/run_ai_eval_harness.py scripts/verify_audit_chain.py scripts/run_load_benchmark.py scripts/generate_openapi_ts.py
       - name: Verify capability safety labels
         run: python scripts/verify_artifact.py
       - name: Verify source manifest

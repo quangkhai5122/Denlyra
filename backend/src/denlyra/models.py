@@ -458,8 +458,8 @@ class FormFieldMap(Base):
 
 class SchemaMigrationMeta(Base):
     __tablename__ = "schema_migration_meta"
-    revision_id: Mapped[str] = mapped_column(String(40), primary_key=True)
-    description: Mapped[str] = mapped_column(String(240), nullable=False)
+    revision_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    description: Mapped[str] = mapped_column(String(320), nullable=False)
     applied_at: Mapped[datetime] = created_col()
 
 
@@ -1301,7 +1301,7 @@ class InstallmentSchedule(Base):
     created_at: Mapped[datetime] = created_col()
     __table_args__ = (
         CheckConstraint("total_amount_vnd > 0", name="ck_installment_total_positive"),
-        CheckConstraint("auto_charge_enabled = 0", name="ck_installment_no_autocharge"),
+        CheckConstraint("NOT auto_charge_enabled", name="ck_installment_no_autocharge"),
         ForeignKeyConstraint(["clinic_id", "patient_id"], ["patient.clinic_id", "patient.id"]),
     )
 
@@ -2644,4 +2644,233 @@ class ReleaseGateEvaluation(Base):
     created_at: Mapped[datetime] = created_col()
     __table_args__ = (
         CheckConstraint("NOT phi_processing_enabled", name="ck_rel_gate_no_phi_enabled"),
+    )
+
+
+class IacBlueprintValidation(Base):
+    __tablename__ = "iac_blueprint_validation"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    blueprint_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    primary_region: Mapped[str] = mapped_column(String(48), nullable=False)
+    dpa_contract_reference: Mapped[str] = mapped_column(String(80), nullable=False)
+    secrets_externalized: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    live_cloud_provisioned: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    blueprint_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    actor_demo: Mapped[str] = mapped_column(String(100), nullable=False)
+    created_at: Mapped[datetime] = created_col()
+    __table_args__ = (
+        CheckConstraint("secrets_externalized", name="ck_iac_secrets_external"),
+        CheckConstraint("NOT live_cloud_provisioned", name="ck_iac_no_live_provision"),
+    )
+
+
+class InsurancePartnerContract(Base):
+    __tablename__ = "insurance_partner_contract"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    partner_code: Mapped[str] = mapped_column(String(60), nullable=False)
+    partner_name: Mapped[str] = mapped_column(String(160), nullable=False)
+    integration_kind: Mapped[str] = mapped_column(
+        String(40), nullable=False, default="private_dental_tpa_sandbox"
+    )
+    contract_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_by_staff_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    created_at: Mapped[datetime] = created_col()
+    __table_args__ = (
+        CheckConstraint(
+            "integration_kind = 'private_dental_tpa_sandbox'", name="ck_ins_no_gov_bhyt"
+        ),
+        UniqueConstraint("clinic_id", "partner_code", name="uq_ins_partner_clinic_code"),
+    )
+
+
+class InsuranceClaimDraft(Base):
+    __tablename__ = "insurance_claim_draft"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    patient_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    partner_id: Mapped[str] = mapped_column(
+        ForeignKey("insurance_partner_contract.id"), nullable=False
+    )
+    charge_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    claimed_amount_vnd: Mapped[int] = mapped_column(Integer, nullable=False)
+    claim_status: Mapped[str] = mapped_column(
+        String(48), nullable=False, default="draft_submitted_sandbox_not_settled"
+    )
+    auto_settled_payment: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    called_government_bhyt_api: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+    actor_demo: Mapped[str] = mapped_column(String(100), nullable=False)
+    created_at: Mapped[datetime] = created_col()
+    __table_args__ = (
+        CheckConstraint("claimed_amount_vnd > 0", name="ck_ins_claim_positive_vnd"),
+        CheckConstraint("NOT auto_settled_payment", name="ck_ins_claim_no_autosettle"),
+        CheckConstraint("NOT called_government_bhyt_api", name="ck_ins_claim_no_bhyt_api"),
+        ForeignKeyConstraint(["clinic_id", "patient_id"], ["patient.clinic_id", "patient.id"]),
+        ForeignKeyConstraint(["clinic_id", "charge_id"], ["charge.clinic_id", "charge.id"]),
+    )
+
+
+class AiAdaptationRun(Base):
+    __tablename__ = "ai_adaptation_run"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    adapter_code: Mapped[str] = mapped_column(String(80), nullable=False)
+    base_model_digest: Mapped[str] = mapped_column(String(80), nullable=False)
+    dataset_license_id: Mapped[str] = mapped_column(String(80), nullable=False)
+    deidentification_verified: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    baseline_f1_bp: Mapped[int] = mapped_column(Integer, nullable=False)
+    candidate_f1_bp: Mapped[int] = mapped_column(Integer, nullable=False)
+    measured_lift_bp: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(40), nullable=False, default="benchmark_passed_offline_only"
+    )
+    deployed_to_clinical_production: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+    wrote_to_emr: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    actor_demo: Mapped[str] = mapped_column(String(100), nullable=False)
+    created_at: Mapped[datetime] = created_col()
+    __table_args__ = (
+        CheckConstraint("deidentification_verified", name="ck_lora_deid_req"),
+        CheckConstraint("measured_lift_bp > 0", name="ck_lora_positive_lift"),
+        CheckConstraint(
+            "NOT deployed_to_clinical_production", name="ck_lora_no_prod_deploy"
+        ),
+        CheckConstraint("NOT wrote_to_emr", name="ck_lora_no_emr_write"),
+    )
+
+
+class PlanReviewAttestation(Base):
+    __tablename__ = "plan_review_attestation"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    plan_id: Mapped[str] = mapped_column(ForeignKey("treatment_plan.id"), nullable=False)
+    version_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    reviewer_staff_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    reviewer_role: Mapped[str] = mapped_column(String(30), nullable=False)
+    version_canonical_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    review_note_vi: Mapped[str] = mapped_column(String(300), nullable=False)
+    simulation_label: Mapped[str] = mapped_column(
+        String(64), nullable=False, default="demo_reviewed_simulation_NOT_dentist_approval"
+    )
+    is_legal_clinical_approval: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+    created_at: Mapped[datetime] = created_col()
+    __table_args__ = (
+        CheckConstraint(
+            "NOT is_legal_clinical_approval", name="ck_plan_att_no_legal_approval"
+        ),
+        UniqueConstraint("plan_id", "version_number", name="uq_plan_att_plan_ver"),
+        ForeignKeyConstraint(
+            ["clinic_id", "reviewer_staff_id"], ["staff.clinic_id", "staff.id"]
+        ),
+    )
+
+
+class ZaloZnsContract(Base):
+    __tablename__ = "zalo_zns_contract"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    oa_id_demo: Mapped[str] = mapped_column(String(60), nullable=False)
+    zns_template_id: Mapped[str] = mapped_column(String(60), nullable=False)
+    official_api_only: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    legal_basis_purpose: Mapped[str] = mapped_column(String(32), nullable=False)
+    price_per_message_vnd: Mapped[int] = mapped_column(Integer, nullable=False)
+    pricing_confirmed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    allowed_param_keys_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    created_by_staff_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    created_at: Mapped[datetime] = created_col()
+    __table_args__ = (
+        CheckConstraint("official_api_only", name="ck_zalo_official_api_only"),
+        CheckConstraint("price_per_message_vnd > 0", name="ck_zalo_positive_price"),
+        UniqueConstraint("clinic_id", "zns_template_id", name="uq_zalo_clinic_tpl"),
+    )
+
+
+class ZaloZnsDispatchPreview(Base):
+    __tablename__ = "zalo_zns_dispatch_preview"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    patient_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    contract_id: Mapped[str] = mapped_column(
+        ForeignKey("zalo_zns_contract.id"), nullable=False
+    )
+    params_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    quoted_cost_vnd: Mapped[int] = mapped_column(Integer, nullable=False)
+    live_external_egress: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    actor_demo: Mapped[str] = mapped_column(String(100), nullable=False)
+    created_at: Mapped[datetime] = created_col()
+    __table_args__ = (
+        CheckConstraint("NOT live_external_egress", name="ck_zalo_disp_no_live_egress"),
+        ForeignKeyConstraint(["clinic_id", "patient_id"], ["patient.clinic_id", "patient.id"]),
+    )
+
+
+class SmsSandboxDispatch(Base):
+    __tablename__ = "sms_sandbox_dispatch"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    patient_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    brandname_sender: Mapped[str] = mapped_column(String(32), nullable=False)
+    purpose: Mapped[str] = mapped_column(String(32), nullable=False)
+    message_ascii_or_ucs2: Mapped[str] = mapped_column(String(320), nullable=False)
+    carrier_delivery_status: Mapped[str] = mapped_column(
+        String(40), nullable=False, default="queued_sandbox"
+    )
+    dlr_evidence_sha256: Mapped[str | None] = mapped_column(String(64))
+    patient_confirmed_appointment: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+    live_external_egress: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    idempotency_key: Mapped[str] = mapped_column(String(120), nullable=False)
+    actor_demo: Mapped[str] = mapped_column(String(100), nullable=False)
+    created_at: Mapped[datetime] = created_col()
+    __table_args__ = (
+        CheckConstraint(
+            "NOT patient_confirmed_appointment", name="ck_sms_no_confirmed_infer"
+        ),
+        CheckConstraint("NOT live_external_egress", name="ck_sms_no_live_egress"),
+        UniqueConstraint("clinic_id", "idempotency_key", name="uq_sms_clinic_idem"),
+        ForeignKeyConstraint(["clinic_id", "patient_id"], ["patient.clinic_id", "patient.id"]),
+    )
+
+
+class EmailVerifiedSender(Base):
+    __tablename__ = "email_verified_sender"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    sender_address: Mapped[str] = mapped_column(String(160), nullable=False)
+    spf_verified: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    dkim_verified: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    dmarc_verified: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    hourly_rate_limit: Mapped[int] = mapped_column(Integer, nullable=False, default=50)
+    created_by_staff_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    created_at: Mapped[datetime] = created_col()
+    __table_args__ = (
+        CheckConstraint("hourly_rate_limit > 0", name="ck_email_positive_rate"),
+        UniqueConstraint("clinic_id", "sender_address", name="uq_email_clinic_addr"),
+    )
+
+
+class EmailSandboxDispatch(Base):
+    __tablename__ = "email_sandbox_dispatch"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    patient_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    sender_id: Mapped[str] = mapped_column(
+        ForeignKey("email_verified_sender.id"), nullable=False
+    )
+    purpose: Mapped[str] = mapped_column(String(32), nullable=False)
+    subject_minimized: Mapped[str] = mapped_column(String(160), nullable=False)
+    body_safe_text: Mapped[str] = mapped_column(String(1000), nullable=False)
+    live_external_egress: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    actor_demo: Mapped[str] = mapped_column(String(100), nullable=False)
+    created_at: Mapped[datetime] = created_col()
+    __table_args__ = (
+        CheckConstraint("NOT live_external_egress", name="ck_email_no_live_egress"),
+        ForeignKeyConstraint(["clinic_id", "patient_id"], ["patient.clinic_id", "patient.id"]),
     )

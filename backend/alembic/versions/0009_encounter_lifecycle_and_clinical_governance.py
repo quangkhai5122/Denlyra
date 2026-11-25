@@ -161,7 +161,7 @@ def upgrade():
         sa.Column("actor_demo", sa.String(100), nullable=False),
         sa.Column("created_at", sa.DateTime(), nullable=False),
         sa.CheckConstraint("total_amount_vnd > 0", name="ck_installment_total_positive"),
-        sa.CheckConstraint("auto_charge_enabled = 0", name="ck_installment_no_autocharge"),
+        sa.CheckConstraint("NOT auto_charge_enabled", name="ck_installment_no_autocharge"),
         sa.ForeignKeyConstraint(["clinic_id", "patient_id"], ["patient.clinic_id", "patient.id"]),
     )
 

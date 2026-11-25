@@ -14,46 +14,53 @@ from denlyra.db import (
     SQLITE_DOWNTIME_BLOCK_TRIGGER,
 )
 
-PG_AUDIT_IMMUTABILITY_DDL = """
-CREATE OR REPLACE FUNCTION reject_audit_event_mutation() RETURNS trigger AS $$
-BEGIN
-    RAISE EXCEPTION 'audit_event is append-only; updates and deletes prohibited';
-END;
-$$ LANGUAGE plpgsql;
+PG_AUDIT_IMMUTABILITY_STATEMENTS = (
+    """
+    CREATE OR REPLACE FUNCTION reject_audit_event_mutation() RETURNS trigger AS $$
+    BEGIN
+        RAISE EXCEPTION 'audit_event is append-only; updates and deletes prohibited';
+    END;
+    $$ LANGUAGE plpgsql
+    """,
+    "DROP TRIGGER IF EXISTS trg_audit_event_no_update ON audit_event",
+    """
+    CREATE TRIGGER trg_audit_event_no_update
+    BEFORE UPDATE ON audit_event
+    FOR EACH ROW EXECUTE FUNCTION reject_audit_event_mutation()
+    """,
+    "DROP TRIGGER IF EXISTS trg_audit_event_no_delete ON audit_event",
+    """
+    CREATE TRIGGER trg_audit_event_no_delete
+    BEFORE DELETE ON audit_event
+    FOR EACH ROW EXECUTE FUNCTION reject_audit_event_mutation()
+    """,
+)
 
-DROP TRIGGER IF EXISTS trg_audit_event_no_update ON audit_event;
-CREATE TRIGGER trg_audit_event_no_update
-BEFORE UPDATE ON audit_event
-FOR EACH ROW EXECUTE FUNCTION reject_audit_event_mutation();
-
-DROP TRIGGER IF EXISTS trg_audit_event_no_delete ON audit_event;
-CREATE TRIGGER trg_audit_event_no_delete
-BEFORE DELETE ON audit_event
-FOR EACH ROW EXECUTE FUNCTION reject_audit_event_mutation();
-"""
-
-PG_DOWNTIME_BLOCK_DDL = """
-CREATE OR REPLACE FUNCTION reject_resource_booking_downtime() RETURNS trigger AS $$
-BEGIN
-    IF NEW.state = 'booked' AND EXISTS (
-        SELECT 1 FROM resource_downtime d
-        WHERE d.clinic_id = NEW.clinic_id
-          AND d.resource_key = NEW.resource_key
-          AND d.status = 'active'
-          AND NEW.start_at < d.end_at
-          AND NEW.end_at > d.start_at
-    ) THEN
-        RAISE EXCEPTION 'Resource is under scheduled maintenance downtime';
-    END IF;
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-DROP TRIGGER IF EXISTS trg_resource_booking_downtime ON resource_booking;
-CREATE TRIGGER trg_resource_booking_downtime
-BEFORE INSERT ON resource_booking
-FOR EACH ROW EXECUTE FUNCTION reject_resource_booking_downtime();
-"""
+PG_DOWNTIME_BLOCK_STATEMENTS = (
+    """
+    CREATE OR REPLACE FUNCTION reject_resource_booking_downtime() RETURNS trigger AS $$
+    BEGIN
+        IF NEW.state = 'active' AND EXISTS (
+            SELECT 1 FROM resource_downtime d
+            WHERE d.clinic_id = NEW.clinic_id
+              AND d.resource_key = NEW.resource_key
+              AND d.status = 'active'
+              AND NEW.start_at < d.end_at
+              AND NEW.end_at > d.start_at
+        ) THEN
+            RAISE EXCEPTION 'Resource is under scheduled maintenance downtime';
+        END IF;
+        RETURN NEW;
+    END;
+    $$ LANGUAGE plpgsql
+    """,
+    "DROP TRIGGER IF EXISTS trg_resource_booking_downtime ON resource_booking",
+    """
+    CREATE TRIGGER trg_resource_booking_downtime
+    BEFORE INSERT ON resource_booking
+    FOR EACH ROW EXECUTE FUNCTION reject_resource_booking_downtime()
+    """,
+)
 
 revision = "0007_operations_audit_chain_and_pagination"
 down_revision = "0006_inventory_fhir_and_ai_harness"
@@ -224,8 +231,10 @@ def upgrade():
         op.execute(SQLITE_AUDIT_NO_UPDATE_TRIGGER)
         op.execute(SQLITE_AUDIT_NO_DELETE_TRIGGER)
     elif bind.dialect.name == "postgresql":
-        op.execute(PG_DOWNTIME_BLOCK_DDL)
-        op.execute(PG_AUDIT_IMMUTABILITY_DDL)
+        for stmt in PG_DOWNTIME_BLOCK_STATEMENTS:
+            op.execute(stmt)
+        for stmt in PG_AUDIT_IMMUTABILITY_STATEMENTS:
+            op.execute(stmt)
 
 
 def downgrade():

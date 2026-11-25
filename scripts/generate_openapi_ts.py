@@ -512,6 +512,9 @@ def render_typescript(openapi: dict) -> str:
             "  runAdversarialSecuritySuite(payload?: AdversarialSecurityRunRequest) {",
             '    return this.request<{ id: string; ssrf_probes_blocked: number; traversal_probes_blocked: number; all_vectors_blocked: boolean; independent_external_pentest_complete: boolean }>("POST", "security/adversarial-suite/run", payload ?? {});',
             "  }",
+            "  validateIacBlueprint(payload: IacBlueprintValidateRequest) {",
+            '    return this.request<{ id: string; blueprint_name: string; primary_region: string; secrets_externalized: boolean; live_cloud_provisioned: boolean; blueprint_sha256: string }>("POST", "ops/iac-blueprints/validate", payload);',
+            "  }",
             "}",
             "",
         ]

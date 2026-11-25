@@ -103,8 +103,8 @@ def upgrade():
 
     op.create_table(
         "schema_migration_meta",
-        sa.Column("revision_id", sa.String(40), primary_key=True),
-        sa.Column("description", sa.String(240), nullable=False),
+        sa.Column("revision_id", sa.String(128), primary_key=True),
+        sa.Column("description", sa.String(320), nullable=False),
         sa.Column("applied_at", sa.DateTime(), nullable=False),
     )
 

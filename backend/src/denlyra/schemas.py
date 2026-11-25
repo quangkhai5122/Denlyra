@@ -1388,3 +1388,94 @@ class ProductionReleaseGateRequest(BaseModel):
     named_clinical_director_signoff: str | None = None
     named_legal_counsel_signoff: str | None = None
     independent_security_auditor_signoff: str | None = None
+
+
+class IacBlueprintValidateRequest(BaseModel):
+    blueprint_name: str = Field(min_length=3, max_length=120)
+    primary_region: str = Field(min_length=3, max_length=48)
+    dpa_contract_reference: str = Field(min_length=5, max_length=80)
+    environment_variables: dict[str, str] = Field(default_factory=dict)
+    apply_live_cloud_provisioning: bool = False
+
+
+class InsurancePartnerCreate(BaseModel):
+    partner_code: str = Field(min_length=3, max_length=60)
+    partner_name: str = Field(min_length=3, max_length=160)
+    integration_kind: Literal["private_dental_tpa_sandbox", "government_bhyt_portal"] = (
+        "private_dental_tpa_sandbox"
+    )
+    contract_active: bool = True
+
+
+class InsuranceClaimDraftCreate(BaseModel):
+    patient_id: str
+    partner_id: str
+    charge_id: str
+    claimed_amount_vnd: StrictInt = Field(gt=0, le=1_000_000_000)
+    auto_settle_as_paid: bool = False
+
+
+class AiAdaptationEvaluateRequest(BaseModel):
+    adapter_code: str = Field(min_length=3, max_length=80)
+    base_model_digest: str = Field(min_length=10, max_length=80)
+    dataset_license_id: str = Field(min_length=3, max_length=80)
+    deidentification_verified: bool
+    dataset_sample_texts: list[str] = Field(min_length=1, max_length=30)
+    baseline_f1_bp: StrictInt = Field(ge=0, le=10_000)
+    candidate_f1_bp: StrictInt = Field(ge=0, le=10_000)
+    min_required_lift_bp: StrictInt = Field(default=150, ge=1, le=5_000)
+
+
+class PlanReviewAttestationCreate(BaseModel):
+    expected_version_number: StrictInt = Field(ge=1, le=1_000)
+    credential_verified_in_demo: bool = True
+    approval_mode: Literal["demo_simulation_only", "legal_clinical_approval"] = (
+        "demo_simulation_only"
+    )
+    review_note_vi: str = Field(min_length=3, max_length=300)
+
+
+class ZaloZnsContractCreate(BaseModel):
+    oa_id_demo: str = Field(min_length=3, max_length=60)
+    zns_template_id: str = Field(min_length=3, max_length=60)
+    official_api_only: Literal[True] = True
+    legal_basis_purpose: Literal["data_processing", "marketing"]
+    price_per_message_vnd: StrictInt = Field(gt=0, le=50_000)
+    pricing_confirmed: bool
+    allowed_param_keys: list[str] = Field(min_length=1, max_length=15)
+
+
+class ZaloZnsPreviewDispatchRequest(BaseModel):
+    patient_id: str
+    contract_id: str
+    template_params: dict[str, str] = Field(default_factory=dict)
+
+
+class SmsSandboxDispatchCreate(BaseModel):
+    patient_id: str
+    brandname_sender: str = Field(min_length=3, max_length=32)
+    purpose: Literal["data_processing", "marketing"]
+    message_ascii_or_ucs2: str = Field(min_length=5, max_length=320)
+    idempotency_key: str = Field(min_length=3, max_length=120)
+
+
+class SmsDeliveryReceiptCreate(BaseModel):
+    provider_dlr_code: str = Field(min_length=3, max_length=60)
+    carrier_status: Literal["carrier_delivered", "handset_rejected", "expired_unreached"]
+    opt_out_triggered: bool = False
+
+
+class EmailVerifiedSenderCreate(BaseModel):
+    sender_address: str = Field(min_length=5, max_length=160)
+    spf_verified: bool
+    dkim_verified: bool
+    dmarc_verified: bool
+    hourly_rate_limit: StrictInt = Field(default=50, ge=1, le=500)
+
+
+class EmailSandboxSendCreate(BaseModel):
+    patient_id: str
+    sender_id: str
+    purpose: Literal["data_processing", "marketing"]
+    subject_minimized: str = Field(min_length=3, max_length=160)
+    body_safe_text: str = Field(min_length=5, max_length=1000)

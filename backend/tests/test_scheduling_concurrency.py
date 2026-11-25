@@ -42,7 +42,7 @@ def test_alembic_upgrade_from_empty_and_from_0001_fixture_preserves_data(tmp_pat
                 )
             )
 
-        # Step 2: Upgrade existing 0001_demo DB through 0002..0013 to head (0014_sandbox_contracts_dicom_speech_and_release_gates)
+        # Step 2: Upgrade existing 0001_demo DB through 0002..0014 to head (0015_iac_insurance_lora_plan_attestation_and_channels)
         command.upgrade(cfg, "0002_hardening")
         command.upgrade(cfg, "0003_treatment_and_signing")
         command.upgrade(cfg, "0004_lab_consent_finance_and_migration")
@@ -55,6 +55,7 @@ def test_alembic_upgrade_from_empty_and_from_0001_fixture_preserves_data(tmp_pat
         command.upgrade(cfg, "0011_facility_optimizer_receipts_comms_and_cutover")
         command.upgrade(cfg, "0012_telemetry_onboarding_incident_portal_and_hr")
         command.upgrade(cfg, "0013_terminology_templates_lab_reports_sync_and_ai")
+        command.upgrade(cfg, "0014_sandbox_contracts_dicom_speech_and_release_gates")
         command.upgrade(cfg, "head")
         tables_head = set(inspect(engine).get_table_names())
         assert "revoked_token" in tables_head
@@ -93,9 +94,12 @@ def test_alembic_upgrade_from_empty_and_from_0001_fixture_preserves_data(tmp_pat
         assert "payment_webhook_inbox" in tables_head
         assert "dicom_study_quarantine_manifest" in tables_head
         assert "release_gate_evaluation" in tables_head
+        assert "iac_blueprint_validation" in tables_head
+        assert "plan_review_attestation" in tables_head
+        assert "email_sandbox_dispatch" in tables_head
         assert "schema_migration_meta" in tables_head
         with engine.connect() as conn:
-            assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0014_sandbox_contracts_dicom_speech_and_release_gates"
+            assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0015_iac_insurance_lora_plan_attestation_and_channels"
             preserved = conn.execute(
                 text("SELECT display_name FROM patient WHERE id = 'pat-v1-0001'")
             ).scalar()
