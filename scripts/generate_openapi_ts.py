@@ -503,6 +503,9 @@ def render_typescript(openapi: dict) -> str:
             "  getCommissionPreview() {",
             '    return this.request<{ clinic_id: string; performed_equated_to_collected: boolean; payroll_legal_review_status: string; clinic_totals: { total_performed_procedures_count: number; total_allocated_collected_vnd: number } }>("GET", "hr/commission-preview");',
             "  }",
+            "  exportEncryptedScheduledReport(payload: ScheduledReportExportCreate) {",
+            '    return this.request<{ id: string; report_kind: string; include_phi: boolean; key_version: number; ciphertext_sha256: string }>("POST", "reports/scheduled-exports", payload);',
+            "  }",
             "}",
             "",
         ]

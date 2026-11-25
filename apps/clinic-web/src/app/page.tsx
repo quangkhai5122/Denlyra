@@ -2091,6 +2091,24 @@ export default function ClinicWorkspacePage() {
               >
                 Kiểm chứng SBOM &amp; Tách biệt Thủ thuật–Hoa hồng (SEC-013 / HR-007)
               </button>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={async () => {
+                  setConflictMsg("");
+                  const r = await client.exportEncryptedScheduledReport({
+                    report_kind: "single_clinic_kpi",
+                    recipient_email: "owner@denlyra-clinic.local",
+                    include_phi: false,
+                  });
+                  if (!r.ok) return handleApiFailure(r.status, r.detail, r.conflict);
+                  setStatusMsg(
+                    `Xuất Báo cáo Mã hóa Không PHI (RPT-010): DLY1 key v${r.data.key_version}, include_phi=${String(r.data.include_phi)}, sha256=${r.data.ciphertext_sha256.slice(0, 16)}…`,
+                  );
+                }}
+              >
+                Xuất Báo cáo KPI Mã hóa Không PHI (RPT-010)
+              </button>
             </div>
           </section>
         </div>

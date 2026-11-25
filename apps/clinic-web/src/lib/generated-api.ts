@@ -156,6 +156,20 @@ export interface ConsentWithdrawRequest {
   reason: string;
 }
 
+export interface CpsatJobInput {
+  patient_id: string;
+  practitioner_id: string;
+  duration_minutes: number;
+}
+
+export interface CpsatOptimizeRequest {
+  window_start_at: string;
+  window_end_at: string;
+  solver_budget_ms?: number;
+  simulate_solver_timeout?: boolean;
+  requests: CpsatJobInput[];
+}
+
 export interface DentalFindingCreate {
   tooth_code: string;
   surface: string;
@@ -329,6 +343,11 @@ export interface InstallmentTrancheInput {
   amount_vnd: number;
 }
 
+export interface InstantiateSpecialtyTemplateRequest {
+  patient_id: string;
+  template_id: string;
+}
+
 export interface InternalHandoffCreate {
   patient_id?: string | null;
   task_id?: string | null;
@@ -341,6 +360,13 @@ export interface LabCaseCreate {
   specification_demo?: string;
   due_on?: string | null;
   file_references?: string[];
+}
+
+export interface LabInvoiceReconcileCreate {
+  vendor_code: string;
+  prosthesis_code: string;
+  billed_amount_vnd: number;
+  vendor_invoice_ref: string;
 }
 
 export interface LabPartnerGrantCreate {
@@ -365,6 +391,21 @@ export interface LabRemakeCreate {
 
 export interface LabStateUpdate {
   next_status: string;
+}
+
+export interface LabVendorPriceCreate {
+  vendor_code: string;
+  prosthesis_code: string;
+  unit_price_vnd: number;
+  remake_surcharge_vnd?: number;
+}
+
+export interface LongitudinalOverlayCreate {
+  tooth_code: string;
+  baseline_archive_object_id: string;
+  followup_archive_object_id: string;
+  alignment_label_vi: string;
+  claim_auto_diagnosis?: boolean;
 }
 
 export interface MedicalRiskReviewCreate {
@@ -396,6 +437,18 @@ export interface MilestoneEvaluateRequest {
   clinician_override_reason?: string | null;
 }
 
+export interface MultibranchOperatorCreate {
+  owner_group_key: string;
+  operator_staff_id: string;
+  assigned_clinic_id: string;
+  grants_clinical_chart_access?: boolean;
+}
+
+export interface NoshowRiskRequest {
+  include_demographic_features?: boolean;
+  simulate_model_unavailable?: boolean;
+}
+
 export interface NoteCreate {
   content: string;
   parent_note_id?: string | null;
@@ -422,6 +475,15 @@ export interface OdontogramRestorationUpsert {
   documented_date: string;
   evidence_note: string;
   encounter_id?: string | null;
+}
+
+export interface OfflineSyncMutationCreate {
+  client_mutation_id: string;
+  entity_type: "draft_note" | "signed_clinical_snapshot" | "appointment_booking";
+  entity_id: string;
+  base_version: number;
+  resolution_strategy?: string;
+  payload?: Record<string, unknown>;
 }
 
 export interface OpsAssistantQueryRequest {
@@ -646,6 +708,17 @@ export interface RefundCreate {
   idempotency_key?: string | null;
 }
 
+export interface ReleaseCanaryApproveRequest {
+  canary_stage: "canary_5pct" | "canary_25pct" | "promoted_100pct" | "rolled_back";
+}
+
+export interface ReleaseProposalCreate {
+  release_tag: string;
+  target_migration_revision: string;
+  backward_compatible_schema: boolean;
+  forward_fix_and_backup_plan: string;
+}
+
 export interface ReminderTemplateCreate {
   template_code: string;
   channel: "sms_stub" | "zalo_stub" | "email_stub" | "portal";
@@ -708,6 +781,13 @@ export interface ScheduleOptimizerProposeRequest {
   override_duration_minutes?: number | null;
 }
 
+export interface ScheduledReportExportCreate {
+  report_kind: "single_clinic_kpi" | "multi_branch_aggregate";
+  owner_group_key?: string | null;
+  recipient_email: string;
+  include_phi?: boolean;
+}
+
 export interface SecurityIncidentCreate {
   severity: "low" | "medium" | "high" | "critical_potential_breach";
   incident_type: "unauthorized_access_attempt" | "token_compromise" | "device_theft" | "malware_upload_quarantined" | "data_exfiltration_alert";
@@ -740,6 +820,19 @@ export interface SkuCreate {
   unit: string;
   lot_tracked?: boolean;
   reorder_threshold?: number;
+}
+
+export interface SpecialtyPlanTemplateCreate {
+  template_code: string;
+  specialty: "implant" | "orthodontics" | "endodontics" | "prosthodontics" | "pediatric";
+  title_vi: string;
+  source_kind?: string;
+  tasks_blueprint: SpecialtyTaskBlueprintItem[];
+}
+
+export interface SpecialtyTaskBlueprintItem {
+  phase: string;
+  title: string;
 }
 
 export interface StaffAttendanceCreate {
@@ -859,6 +952,22 @@ export interface TemporaryDelegationCreate {
   reason: string;
 }
 
+export interface TerminologyCodeCreate {
+  code_system: "ICD-10-VN-DEMO" | "SNOMED-DENTAL-DEMO" | "LOCAL-PROC-DEMO";
+  system_version: string;
+  code: string;
+  display_vi: string;
+}
+
+export interface TerminologyMappingCreate {
+  source_code: string;
+  target_code_system: "ICD-10-VN-DEMO" | "SNOMED-DENTAL-DEMO" | "LOCAL-PROC-DEMO";
+  target_system_version: string;
+  target_code: string;
+  equivalence?: "exact" | "narrower";
+  mapping_method?: string;
+}
+
 export interface TokenIssueRequest {
   clinic_id: string;
   role: "clinic_owner" | "medical_director" | "dentist" | "assistant" | "receptionist" | "treatment_coordinator" | "finance";
@@ -884,6 +993,7 @@ export interface WaitlistCreate {
 
 export const OPENAPI_OPERATIONS = [
   "GET /",
+  "POST /api/v1/ai/appointments/{appointment_id}/noshow-risk",
   "GET /api/v1/ai/communication-drafts",
   "POST /api/v1/ai/communication-drafts",
   "POST /api/v1/ai/drafts/dictation-extract",
@@ -893,6 +1003,7 @@ export const OPENAPI_OPERATIONS = [
   "POST /api/v1/ai/evaluations/run",
   "GET /api/v1/ai/models",
   "POST /api/v1/ai/ops-assistant/query",
+  "POST /api/v1/ai/scheduling/cpsat-optimize",
   "GET /api/v1/appointments",
   "POST /api/v1/appointments",
   "GET /api/v1/appointments/page",
@@ -1012,6 +1123,8 @@ export const OPENAPI_OPERATIONS = [
   "POST /api/v1/inventory/suppliers",
   "GET /api/v1/lab-cases",
   "POST /api/v1/lab-cases",
+  "GET /api/v1/lab-cases/{lab_case_id}/invoice-reconciliations",
+  "POST /api/v1/lab-cases/{lab_case_id}/invoice-reconciliations",
   "GET /api/v1/lab-cases/{lab_id}/alerts",
   "POST /api/v1/lab-cases/{lab_id}/partner-grants",
   "POST /api/v1/lab-cases/{lab_id}/receive",
@@ -1019,6 +1132,8 @@ export const OPENAPI_OPERATIONS = [
   "POST /api/v1/lab-cases/{lab_id}/state",
   "GET /api/v1/lab-portal/cases/{grant_token}",
   "POST /api/v1/lab-portal/cases/{grant_token}/milestones",
+  "GET /api/v1/lab/price-list",
+  "POST /api/v1/lab/price-list",
   "GET /api/v1/migration/cutover-plans",
   "POST /api/v1/migration/cutover-plans",
   "GET /api/v1/migration/incumbent-exports",
@@ -1058,8 +1173,15 @@ export const OPENAPI_OPERATIONS = [
   "POST /api/v1/operations/waitlist",
   "POST /api/v1/operations/waitlist/{entry_id}/confirm-booking",
   "POST /api/v1/operations/waitlist/{entry_id}/prepare-outreach",
+  "GET /api/v1/ops/multibranch-operators",
+  "POST /api/v1/ops/multibranch-operators",
+  "GET /api/v1/ops/offline-sync",
+  "POST /api/v1/ops/offline-sync",
   "GET /api/v1/ops/onboarding-config",
   "POST /api/v1/ops/onboarding-config",
+  "GET /api/v1/ops/releases",
+  "POST /api/v1/ops/releases",
+  "POST /api/v1/ops/releases/{release_id}/approve-canary",
   "POST /api/v1/ops/support/diagnostic-export",
   "POST /api/v1/ops/support/grants",
   "POST /api/v1/ops/support/grants/{grant_id}/revoke",
@@ -1094,6 +1216,8 @@ export const OPENAPI_OPERATIONS = [
   "POST /api/v1/patients/{patient_id}/medical-risk-reviews",
   "GET /api/v1/patients/{patient_id}/odontogram",
   "GET /api/v1/patients/{patient_id}/odontogram/export",
+  "GET /api/v1/patients/{patient_id}/odontogram/imaging-overlays",
+  "POST /api/v1/patients/{patient_id}/odontogram/imaging-overlays",
   "PUT /api/v1/patients/{patient_id}/odontogram/restorations/{tooth_code}",
   "GET /api/v1/patients/{patient_id}/referrals",
   "POST /api/v1/patients/{patient_id}/referrals",
@@ -1111,6 +1235,8 @@ export const OPENAPI_OPERATIONS = [
   "POST /api/v1/referrals/{referral_id}/review",
   "GET /api/v1/reports/dictionary",
   "GET /api/v1/reports/kpi-lineage",
+  "GET /api/v1/reports/scheduled-exports",
+  "POST /api/v1/reports/scheduled-exports",
   "POST /api/v1/resources",
   "POST /api/v1/scheduling/appointments/{appointment_id}/cancellation-recovery",
   "GET /api/v1/scheduling/duration-estimate",
@@ -1125,9 +1251,18 @@ export const OPENAPI_OPERATIONS = [
   "GET /api/v1/signed-download/{grant_token}",
   "POST /api/v1/staff",
   "POST /api/v1/staff/{staff_id}/deactivate",
+  "GET /api/v1/terminology/codes",
+  "POST /api/v1/terminology/codes",
+  "GET /api/v1/terminology/mappings",
+  "POST /api/v1/terminology/mappings",
+  "GET /api/v1/terminology/resolve",
   "POST /api/v1/treatment-milestones/{milestone_id}/evaluate",
   "GET /api/v1/treatment-plans",
   "POST /api/v1/treatment-plans",
+  "POST /api/v1/treatment-plans/from-specialty-template",
+  "GET /api/v1/treatment-plans/specialty-templates",
+  "POST /api/v1/treatment-plans/specialty-templates",
+  "POST /api/v1/treatment-plans/specialty-templates/{template_id}/review",
   "GET /api/v1/treatment-plans/{plan_id}",
   "POST /api/v1/treatment-plans/{plan_id}/demo-review",
   "GET /api/v1/treatment-plans/{plan_id}/lifecycle",
@@ -1547,5 +1682,8 @@ export class DenlyraApiClient {
   }
   getCommissionPreview() {
     return this.request<{ clinic_id: string; performed_equated_to_collected: boolean; payroll_legal_review_status: string; clinic_totals: { total_performed_procedures_count: number; total_allocated_collected_vnd: number } }>("GET", "hr/commission-preview");
+  }
+  exportEncryptedScheduledReport(payload: ScheduledReportExportCreate) {
+    return this.request<{ id: string; report_kind: string; include_phi: boolean; key_version: number; ciphertext_sha256: string }>("POST", "reports/scheduled-exports", payload);
   }
 }

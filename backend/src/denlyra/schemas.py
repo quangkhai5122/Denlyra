@@ -1123,3 +1123,125 @@ class StaffCompetencyValidateRequest(BaseModel):
     staff_id: str
     competency_code: str = Field(min_length=2, max_length=60)
     as_of_date: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
+
+
+class TerminologyCodeCreate(BaseModel):
+    code_system: Literal["ICD-10-VN-DEMO", "SNOMED-DENTAL-DEMO", "LOCAL-PROC-DEMO"]
+    system_version: str = Field(min_length=1, max_length=30)
+    code: str = Field(min_length=1, max_length=60)
+    display_vi: str = Field(min_length=2, max_length=240)
+
+
+class TerminologyMappingCreate(BaseModel):
+    source_code: str = Field(min_length=2, max_length=60)
+    target_code_system: Literal["ICD-10-VN-DEMO", "SNOMED-DENTAL-DEMO", "LOCAL-PROC-DEMO"]
+    target_system_version: str = Field(min_length=1, max_length=30)
+    target_code: str = Field(min_length=1, max_length=60)
+    equivalence: Literal["exact", "narrower"] = "exact"
+    mapping_method: Literal["clinician_verified_exact"] = "clinician_verified_exact"
+
+
+class SpecialtyTaskBlueprintItem(BaseModel):
+    phase: str = Field(min_length=2, max_length=100)
+    title: str = Field(min_length=3, max_length=160)
+
+
+class SpecialtyPlanTemplateCreate(BaseModel):
+    template_code: str = Field(min_length=2, max_length=60)
+    specialty: Literal["implant", "orthodontics", "endodontics", "prosthodontics", "pediatric"]
+    title_vi: str = Field(min_length=3, max_length=200)
+    source_kind: Literal["clinic_clinician_authored"] = "clinic_clinician_authored"
+    tasks_blueprint: list[SpecialtyTaskBlueprintItem] = Field(min_length=1, max_length=25)
+
+
+class InstantiateSpecialtyTemplateRequest(BaseModel):
+    patient_id: str
+    template_id: str
+
+
+class LabVendorPriceCreate(BaseModel):
+    vendor_code: str = Field(min_length=2, max_length=60)
+    prosthesis_code: str = Field(min_length=2, max_length=60)
+    unit_price_vnd: StrictInt = Field(gt=0, le=500_000_000)
+    remake_surcharge_vnd: StrictInt = Field(default=0, ge=0, le=500_000_000)
+
+
+class LabInvoiceReconcileCreate(BaseModel):
+    vendor_code: str = Field(min_length=2, max_length=60)
+    prosthesis_code: str = Field(min_length=2, max_length=60)
+    billed_amount_vnd: StrictInt = Field(gt=0, le=500_000_000)
+    vendor_invoice_ref: str = Field(min_length=3, max_length=80)
+
+
+class LongitudinalOverlayCreate(BaseModel):
+    tooth_code: str = Field(min_length=2, max_length=2)
+    baseline_archive_object_id: str
+    followup_archive_object_id: str
+    alignment_label_vi: str = Field(min_length=5, max_length=260)
+    claim_auto_diagnosis: bool = False
+
+    @model_validator(mode="after")
+    def check_overlay_tooth(self):
+        _check_fdi_code(self.tooth_code)
+        return self
+
+
+class ScheduledReportExportCreate(BaseModel):
+    report_kind: Literal["single_clinic_kpi", "multi_branch_aggregate"]
+    owner_group_key: str | None = Field(default=None, max_length=80)
+    recipient_email: str = Field(min_length=5, max_length=160)
+    include_phi: bool = False
+
+
+class ReleaseProposalCreate(BaseModel):
+    release_tag: str = Field(min_length=3, max_length=60)
+    target_migration_revision: str = Field(min_length=4, max_length=80)
+    backward_compatible_schema: bool
+    forward_fix_and_backup_plan: str = Field(min_length=5, max_length=400)
+
+
+class ReleaseCanaryApproveRequest(BaseModel):
+    canary_stage: Literal["canary_5pct", "canary_25pct", "promoted_100pct", "rolled_back"]
+
+
+class MultibranchOperatorCreate(BaseModel):
+    owner_group_key: str = Field(min_length=3, max_length=80)
+    operator_staff_id: str
+    assigned_clinic_id: str
+    grants_clinical_chart_access: bool = False
+
+
+class OfflineSyncMutationCreate(BaseModel):
+    client_mutation_id: str = Field(min_length=3, max_length=80)
+    entity_type: Literal["draft_note", "signed_clinical_snapshot", "appointment_booking"]
+    entity_id: str = Field(min_length=2, max_length=36)
+    base_version: StrictInt = Field(ge=0)
+    resolution_strategy: Literal["optimistic_version_check"] = "optimistic_version_check"
+    payload: dict = Field(default_factory=dict)
+
+
+class NoshowRiskRequest(BaseModel):
+    include_demographic_features: bool = False
+    simulate_model_unavailable: bool = False
+
+
+class CpsatJobInput(BaseModel):
+    patient_id: str
+    practitioner_id: str
+    duration_minutes: StrictInt = Field(ge=15, le=240)
+
+
+class CpsatOptimizeRequest(BaseModel):
+    window_start_at: datetime
+    window_end_at: datetime
+    solver_budget_ms: StrictInt = Field(default=250, ge=0, le=5000)
+    simulate_solver_timeout: bool = False
+    requests: list[CpsatJobInput] = Field(min_length=1, max_length=12)
+
+    @model_validator(mode="after")
+    def check_cpsat_window(self):
+        if not self.window_start_at.tzinfo or not self.window_end_at.tzinfo:
+            raise ValueError("Provide timezone-aware RFC3339 window timestamps")
+        if self.window_end_at <= self.window_start_at:
+            raise ValueError("window_end_at must exceed window_start_at")
+        return self

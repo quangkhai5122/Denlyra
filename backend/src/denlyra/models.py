@@ -2017,3 +2017,296 @@ class StaffCompetencyRecord(Base):
         ),
         ForeignKeyConstraint(["clinic_id", "staff_id"], ["staff.clinic_id", "staff.id"]),
     )
+
+
+class TerminologyCodeEntry(Base):
+    __tablename__ = "terminology_code_entry"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    code_system: Mapped[str] = mapped_column(String(40), nullable=False)
+    system_version: Mapped[str] = mapped_column(String(30), nullable=False)
+    code: Mapped[str] = mapped_column(String(60), nullable=False)
+    display_vi: Mapped[str] = mapped_column(String(240), nullable=False)
+    approved_by_staff_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    created_at: Mapped[datetime] = created_col()
+    __table_args__ = (
+        UniqueConstraint(
+            "clinic_id",
+            "code_system",
+            "system_version",
+            "code",
+            name="uq_term_code_clinic_sys_ver_code",
+        ),
+    )
+
+
+class TerminologyMappingRule(Base):
+    __tablename__ = "terminology_mapping_rule"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    source_code: Mapped[str] = mapped_column(String(60), nullable=False)
+    target_code_system: Mapped[str] = mapped_column(String(40), nullable=False)
+    target_system_version: Mapped[str] = mapped_column(String(30), nullable=False)
+    target_code: Mapped[str] = mapped_column(String(60), nullable=False)
+    equivalence: Mapped[str] = mapped_column(String(24), nullable=False)
+    mapping_method: Mapped[str] = mapped_column(
+        String(40), nullable=False, default="clinician_verified_exact"
+    )
+    reviewed_by_staff_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    created_at: Mapped[datetime] = created_col()
+    __table_args__ = (
+        CheckConstraint(
+            "mapping_method = 'clinician_verified_exact'",
+            name="ck_term_no_guessed_map",
+        ),
+        UniqueConstraint(
+            "clinic_id",
+            "source_code",
+            "target_code_system",
+            name="uq_term_map_clinic_src_sys",
+        ),
+    )
+
+
+class SpecialtyPlanTemplate(Base):
+    __tablename__ = "specialty_plan_template"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    template_code: Mapped[str] = mapped_column(String(60), nullable=False)
+    version_number: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    specialty: Mapped[str] = mapped_column(String(40), nullable=False)
+    title_vi: Mapped[str] = mapped_column(String(200), nullable=False)
+    tasks_blueprint_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    source_kind: Mapped[str] = mapped_column(
+        String(40), nullable=False, default="clinic_clinician_authored"
+    )
+    review_status: Mapped[str] = mapped_column(
+        String(36), nullable=False, default="draft_unreviewed"
+    )
+    reviewed_by_staff_id: Mapped[str | None] = mapped_column(String(36))
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime())
+    created_at: Mapped[datetime] = created_col()
+    __table_args__ = (
+        UniqueConstraint(
+            "clinic_id",
+            "template_code",
+            "version_number",
+            name="uq_spec_tpl_clinic_code_ver",
+        ),
+    )
+
+
+class LabVendorPriceItem(Base):
+    __tablename__ = "lab_vendor_price_item"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    vendor_code: Mapped[str] = mapped_column(String(60), nullable=False)
+    prosthesis_code: Mapped[str] = mapped_column(String(60), nullable=False)
+    version_number: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    unit_price_vnd: Mapped[int] = mapped_column(Integer, nullable=False)
+    remake_surcharge_vnd: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    actor_demo: Mapped[str] = mapped_column(String(100), nullable=False)
+    created_at: Mapped[datetime] = created_col()
+    __table_args__ = (
+        CheckConstraint("unit_price_vnd > 0", name="ck_lab_price_unit_pos"),
+        CheckConstraint("remake_surcharge_vnd >= 0", name="ck_lab_price_remake_nonneg"),
+        UniqueConstraint(
+            "clinic_id",
+            "vendor_code",
+            "prosthesis_code",
+            "version_number",
+            name="uq_lab_vendor_price_ver",
+        ),
+    )
+
+
+class LabInvoiceReconciliation(Base):
+    __tablename__ = "lab_invoice_reconciliation"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    lab_case_id: Mapped[str] = mapped_column(ForeignKey("lab_case.id"), nullable=False)
+    vendor_code: Mapped[str] = mapped_column(String(60), nullable=False)
+    prosthesis_code: Mapped[str] = mapped_column(String(60), nullable=False)
+    vendor_invoice_ref: Mapped[str] = mapped_column(String(80), nullable=False)
+    price_version_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    contracted_amount_vnd: Mapped[int] = mapped_column(Integer, nullable=False)
+    billed_amount_vnd: Mapped[int] = mapped_column(Integer, nullable=False)
+    variance_vnd: Mapped[int] = mapped_column(Integer, nullable=False)
+    reconciliation_status: Mapped[str] = mapped_column(String(32), nullable=False)
+    sanitized_vendor_payload_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    contains_phi: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    actor_demo: Mapped[str] = mapped_column(String(100), nullable=False)
+    created_at: Mapped[datetime] = created_col()
+    __table_args__ = (
+        CheckConstraint("NOT contains_phi", name="ck_lab_inv_no_phi"),
+    )
+
+
+class LongitudinalImagingOverlay(Base):
+    __tablename__ = "longitudinal_imaging_overlay"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    patient_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    tooth_code: Mapped[str] = mapped_column(String(2), nullable=False)
+    baseline_archive_object_id: Mapped[str] = mapped_column(
+        ForeignKey("archive_object.id"), nullable=False
+    )
+    followup_archive_object_id: Mapped[str] = mapped_column(
+        ForeignKey("archive_object.id"), nullable=False
+    )
+    alignment_label_vi: Mapped[str] = mapped_column(String(260), nullable=False)
+    visualization_provenance_label: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+        default="SYNTHETIC_VISUAL_COMPARISON_NOT_DIAGNOSTIC",
+    )
+    auto_diagnosis_generated: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+    created_by_staff_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    created_at: Mapped[datetime] = created_col()
+    __table_args__ = (
+        CheckConstraint("NOT auto_diagnosis_generated", name="ck_overlay_no_auto_diag"),
+        ForeignKeyConstraint(["clinic_id", "patient_id"], ["patient.clinic_id", "patient.id"]),
+    )
+
+
+class ScheduledReportExport(Base):
+    __tablename__ = "scheduled_report_export"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    owner_group_key: Mapped[str | None] = mapped_column(String(80))
+    report_kind: Mapped[str] = mapped_column(String(40), nullable=False)
+    recipient_email: Mapped[str] = mapped_column(String(160), nullable=False)
+    include_phi: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    key_id: Mapped[str] = mapped_column(
+        ForeignKey("tenant_encryption_key.id"), nullable=False
+    )
+    key_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    encrypted_envelope_b64: Mapped[str] = mapped_column(Text, nullable=False)
+    plaintext_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    ciphertext_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    exported_by_staff_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    created_at: Mapped[datetime] = created_col()
+    __table_args__ = (
+        CheckConstraint("NOT include_phi", name="ck_rpt_export_no_phi"),
+    )
+
+
+class ReleaseChangeApproval(Base):
+    __tablename__ = "release_change_approval"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    release_tag: Mapped[str] = mapped_column(String(60), nullable=False)
+    target_migration_revision: Mapped[str] = mapped_column(String(80), nullable=False)
+    canary_stage: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="pre_canary"
+    )
+    backward_compatible_schema: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True
+    )
+    forward_fix_and_backup_plan: Mapped[str] = mapped_column(String(400), nullable=False)
+    proposer_staff_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    approver_staff_id: Mapped[str | None] = mapped_column(String(36))
+    status: Mapped[str] = mapped_column(
+        String(36), nullable=False, default="pending_change_approval"
+    )
+    created_at: Mapped[datetime] = created_col()
+    __table_args__ = (
+        CheckConstraint("backward_compatible_schema", name="ck_release_backward_compat"),
+    )
+
+
+class MultibranchOperatorAssignment(Base):
+    __tablename__ = "multibranch_operator_assignment"
+    id: Mapped[str] = id_col()
+    owner_group_key: Mapped[str] = mapped_column(String(80), nullable=False)
+    operator_staff_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    home_clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    assigned_clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    operational_scope: Mapped[str] = mapped_column(
+        String(48), nullable=False, default="aggregate_kpi_and_ops_read_only"
+    )
+    grants_clinical_chart_access: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+    granted_by_staff_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = created_col()
+    __table_args__ = (
+        CheckConstraint(
+            "NOT grants_clinical_chart_access", name="ck_mb_op_no_chart_bleed"
+        ),
+    )
+
+
+class OfflineSyncMutation(Base):
+    __tablename__ = "offline_sync_mutation"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    client_mutation_id: Mapped[str] = mapped_column(String(80), nullable=False)
+    entity_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    entity_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    base_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    resolution_strategy: Mapped[str] = mapped_column(
+        String(40), nullable=False, default="optimistic_version_check"
+    )
+    sync_status: Mapped[str] = mapped_column(String(36), nullable=False)
+    conflict_reason: Mapped[str | None] = mapped_column(String(260))
+    payload_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    actor_demo: Mapped[str] = mapped_column(String(100), nullable=False)
+    created_at: Mapped[datetime] = created_col()
+    __table_args__ = (
+        CheckConstraint(
+            "resolution_strategy = 'optimistic_version_check'",
+            name="ck_offline_no_lww",
+        ),
+        UniqueConstraint("clinic_id", "client_mutation_id", name="uq_offline_mut_client_id"),
+    )
+
+
+class NoshowRiskAssessment(Base):
+    __tablename__ = "noshow_risk_assessment"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    appointment_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    risk_band: Mapped[str] = mapped_column(String(32), nullable=False)
+    calibrated_probability_bp: Mapped[int] = mapped_column(Integer, nullable=False)
+    uses_protected_demographics: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+    auto_cancelled_or_overbooked: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+    recommended_human_action: Mapped[str] = mapped_column(String(260), nullable=False)
+    actor_demo: Mapped[str] = mapped_column(String(100), nullable=False)
+    created_at: Mapped[datetime] = created_col()
+    __table_args__ = (
+        CheckConstraint("NOT uses_protected_demographics", name="ck_noshow_fairness"),
+        CheckConstraint(
+            "NOT auto_cancelled_or_overbooked", name="ck_noshow_no_auto_cancel"
+        ),
+        ForeignKeyConstraint(
+            ["clinic_id", "appointment_id"],
+            ["appointment.clinic_id", "appointment.id"],
+        ),
+    )
+
+
+class CpsatOptimizationRun(Base):
+    __tablename__ = "cpsat_optimization_run"
+    id: Mapped[str] = id_col()
+    clinic_id: Mapped[str] = mapped_column(ForeignKey("clinic.id"), nullable=False)
+    solver_budget_ms: Mapped[int] = mapped_column(Integer, nullable=False)
+    solver_outcome: Mapped[str] = mapped_column(String(48), nullable=False)
+    proposed_assignments_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    existing_bookings_mutated_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0
+    )
+    actor_demo: Mapped[str] = mapped_column(String(100), nullable=False)
+    created_at: Mapped[datetime] = created_col()
+    __table_args__ = (
+        CheckConstraint(
+            "existing_bookings_mutated_count = 0", name="ck_cpsat_zero_auto_mutation"
+        ),
+    )

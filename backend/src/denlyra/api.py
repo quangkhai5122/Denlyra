@@ -37,7 +37,10 @@ from . import (
     org_crm_ops_assistant,
     patient_portal,
     portal_access_recovery_hr,
+    release_sync_and_scheduling_ai,
+    schemas as sch,
     services as svc,
+    terminology_templates_lab_reports,
 )
 from .config import Settings
 from .db import build_engine, init_demo_schema, session_factory
@@ -2973,6 +2976,307 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def get_commission_preview_endpoint(context=Depends(require_perm("staff.manage"))):
         db, clinic_id, _ = context
         return portal_access_recovery_hr.get_commission_payroll_preview(db, clinic_id)
+
+    @app.get("/api/v1/terminology/codes")
+    def list_terminology_codes_endpoint(context=Depends(require_perm("encounter.read"))):
+        db, clinic_id, _ = context
+        rows = db.scalars(
+            select(m.TerminologyCodeEntry)
+            .where(m.TerminologyCodeEntry.clinic_id == clinic_id)
+            .order_by(m.TerminologyCodeEntry.created_at.desc())
+        ).all()
+        return [doc(r) for r in rows]
+
+    @app.post("/api/v1/terminology/codes", status_code=201)
+    def publish_terminology_code_endpoint(
+        payload: sch.TerminologyCodeCreate,
+        ctx_tuple=Depends(require_principal_perm("plan.review")),
+    ):
+        db, clinic_id, actor, principal = ctx_tuple
+        return doc(
+            terminology_templates_lab_reports.publish_terminology_code(
+                db, clinic_id, principal.staff_id, actor, payload
+            )
+        )
+
+    @app.get("/api/v1/terminology/mappings")
+    def list_terminology_mappings_endpoint(context=Depends(require_perm("encounter.read"))):
+        db, clinic_id, _ = context
+        rows = db.scalars(
+            select(m.TerminologyMappingRule)
+            .where(m.TerminologyMappingRule.clinic_id == clinic_id)
+            .order_by(m.TerminologyMappingRule.created_at.desc())
+        ).all()
+        return [doc(r) for r in rows]
+
+    @app.post("/api/v1/terminology/mappings", status_code=201)
+    def publish_terminology_mapping_endpoint(
+        payload: sch.TerminologyMappingCreate,
+        ctx_tuple=Depends(require_principal_perm("plan.review")),
+    ):
+        db, clinic_id, actor, principal = ctx_tuple
+        return doc(
+            terminology_templates_lab_reports.publish_terminology_mapping(
+                db, clinic_id, principal.staff_id, actor, payload
+            )
+        )
+
+    @app.get("/api/v1/terminology/resolve")
+    def resolve_terminology_mapping_endpoint(
+        source_code: str,
+        target_code_system: str,
+        context=Depends(require_perm("encounter.read")),
+    ):
+        db, clinic_id, _ = context
+        return terminology_templates_lab_reports.resolve_terminology_mapping(
+            db, clinic_id, source_code, target_code_system
+        )
+
+    @app.get("/api/v1/treatment-plans/specialty-templates")
+    def list_specialty_templates_endpoint(context=Depends(require_perm("plan.read"))):
+        db, clinic_id, _ = context
+        rows = db.scalars(
+            select(m.SpecialtyPlanTemplate)
+            .where(m.SpecialtyPlanTemplate.clinic_id == clinic_id)
+            .order_by(m.SpecialtyPlanTemplate.created_at.desc())
+        ).all()
+        return [doc(r) for r in rows]
+
+    @app.post("/api/v1/treatment-plans/specialty-templates", status_code=201)
+    def create_specialty_template_endpoint(
+        payload: sch.SpecialtyPlanTemplateCreate,
+        context=Depends(require_perm("plan.write")),
+    ):
+        db, clinic_id, actor = context
+        return doc(
+            terminology_templates_lab_reports.create_specialty_plan_template(
+                db, clinic_id, actor, payload
+            )
+        )
+
+    @app.post("/api/v1/treatment-plans/specialty-templates/{template_id}/review")
+    def review_specialty_template_endpoint(
+        template_id: str,
+        ctx_tuple=Depends(require_principal_perm("plan.review")),
+    ):
+        db, clinic_id, actor, principal = ctx_tuple
+        return doc(
+            terminology_templates_lab_reports.review_specialty_plan_template(
+                db, clinic_id, template_id, principal.staff_id, actor
+            )
+        )
+
+    @app.post("/api/v1/treatment-plans/from-specialty-template", status_code=201)
+    def instantiate_specialty_template_endpoint(
+        payload: sch.InstantiateSpecialtyTemplateRequest,
+        context=Depends(require_perm("plan.write")),
+    ):
+        db, clinic_id, actor = context
+        return terminology_templates_lab_reports.instantiate_plan_from_specialty_template(
+            db, clinic_id, actor, payload
+        )
+
+    @app.get("/api/v1/lab/price-list")
+    def list_lab_price_list_endpoint(context=Depends(require_perm("lab.read"))):
+        db, clinic_id, _ = context
+        rows = db.scalars(
+            select(m.LabVendorPriceItem)
+            .where(m.LabVendorPriceItem.clinic_id == clinic_id)
+            .order_by(m.LabVendorPriceItem.created_at.desc())
+        ).all()
+        return [doc(r) for r in rows]
+
+    @app.post("/api/v1/lab/price-list", status_code=201)
+    def publish_lab_price_item_endpoint(
+        payload: sch.LabVendorPriceCreate,
+        context=Depends(require_perm("lab.write")),
+    ):
+        db, clinic_id, actor = context
+        return doc(
+            terminology_templates_lab_reports.publish_lab_vendor_price_item(
+                db, clinic_id, actor, payload
+            )
+        )
+
+    @app.get("/api/v1/lab-cases/{lab_case_id}/invoice-reconciliations")
+    def list_lab_invoice_reconciliations_endpoint(
+        lab_case_id: str, context=Depends(require_perm("lab.read"))
+    ):
+        db, clinic_id, _ = context
+        svc.ensure(db, m.LabCase, lab_case_id, clinic_id)
+        rows = db.scalars(
+            select(m.LabInvoiceReconciliation)
+            .where(
+                m.LabInvoiceReconciliation.clinic_id == clinic_id,
+                m.LabInvoiceReconciliation.lab_case_id == lab_case_id,
+            )
+            .order_by(m.LabInvoiceReconciliation.created_at.desc())
+        ).all()
+        return [doc(r) for r in rows]
+
+    @app.post("/api/v1/lab-cases/{lab_case_id}/invoice-reconciliations", status_code=201)
+    def reconcile_lab_invoice_endpoint(
+        lab_case_id: str,
+        payload: sch.LabInvoiceReconcileCreate,
+        context=Depends(require_perm("lab.write")),
+    ):
+        db, clinic_id, actor = context
+        return doc(
+            terminology_templates_lab_reports.reconcile_lab_vendor_invoice(
+                db, clinic_id, lab_case_id, actor, payload
+            )
+        )
+
+    @app.get("/api/v1/patients/{patient_id}/odontogram/imaging-overlays")
+    def list_imaging_overlays_endpoint(
+        patient_id: str, context=Depends(require_perm("odontogram.read"))
+    ):
+        db, clinic_id, _ = context
+        svc.ensure(db, m.Patient, patient_id, clinic_id)
+        rows = db.scalars(
+            select(m.LongitudinalImagingOverlay)
+            .where(
+                m.LongitudinalImagingOverlay.clinic_id == clinic_id,
+                m.LongitudinalImagingOverlay.patient_id == patient_id,
+            )
+            .order_by(m.LongitudinalImagingOverlay.created_at.desc())
+        ).all()
+        return [doc(r) for r in rows]
+
+    @app.post("/api/v1/patients/{patient_id}/odontogram/imaging-overlays", status_code=201)
+    def create_imaging_overlay_endpoint(
+        patient_id: str,
+        payload: sch.LongitudinalOverlayCreate,
+        ctx_tuple=Depends(require_principal_perm("odontogram.write")),
+    ):
+        db, clinic_id, actor, principal = ctx_tuple
+        return doc(
+            terminology_templates_lab_reports.create_longitudinal_imaging_overlay(
+                db, clinic_id, patient_id, principal.staff_id, actor, payload
+            )
+        )
+
+    @app.get("/api/v1/reports/scheduled-exports")
+    def list_scheduled_report_exports_endpoint(context=Depends(require_perm("staff.manage"))):
+        db, clinic_id, _ = context
+        rows = db.scalars(
+            select(m.ScheduledReportExport)
+            .where(m.ScheduledReportExport.clinic_id == clinic_id)
+            .order_by(m.ScheduledReportExport.created_at.desc())
+        ).all()
+        return [doc(r) for r in rows]
+
+    @app.post("/api/v1/reports/scheduled-exports", status_code=201)
+    def create_scheduled_report_export_endpoint(
+        payload: sch.ScheduledReportExportCreate,
+        ctx_tuple=Depends(require_principal_perm("staff.manage")),
+    ):
+        db, clinic_id, actor, principal = ctx_tuple
+        return doc(
+            terminology_templates_lab_reports.create_encrypted_scheduled_report_export(
+                db, clinic_id, principal.staff_id, actor, cfg.auth_secret, payload
+            )
+        )
+
+    @app.get("/api/v1/ops/releases")
+    def list_releases_endpoint(context=Depends(require_perm("staff.manage"))):
+        db, clinic_id, _ = context
+        rows = db.scalars(
+            select(m.ReleaseChangeApproval)
+            .where(m.ReleaseChangeApproval.clinic_id == clinic_id)
+            .order_by(m.ReleaseChangeApproval.created_at.desc())
+        ).all()
+        return [doc(r) for r in rows]
+
+    @app.post("/api/v1/ops/releases", status_code=201)
+    def create_release_proposal_endpoint(
+        payload: sch.ReleaseProposalCreate,
+        ctx_tuple=Depends(require_principal_perm("staff.manage")),
+    ):
+        db, clinic_id, actor, principal = ctx_tuple
+        return doc(
+            release_sync_and_scheduling_ai.create_release_proposal(
+                db, clinic_id, principal.staff_id, actor, payload
+            )
+        )
+
+    @app.post("/api/v1/ops/releases/{release_id}/approve-canary")
+    def approve_release_canary_endpoint(
+        release_id: str,
+        payload: sch.ReleaseCanaryApproveRequest,
+        ctx_tuple=Depends(require_principal_perm("staff.manage")),
+    ):
+        db, clinic_id, actor, principal = ctx_tuple
+        return doc(
+            release_sync_and_scheduling_ai.approve_release_canary_stage(
+                db, clinic_id, release_id, principal.staff_id, actor, payload
+            )
+        )
+
+    @app.get("/api/v1/ops/multibranch-operators")
+    def list_multibranch_operators_endpoint(context=Depends(require_perm("staff.manage"))):
+        db, clinic_id, _ = context
+        rows = db.scalars(
+            select(m.MultibranchOperatorAssignment)
+            .where(m.MultibranchOperatorAssignment.home_clinic_id == clinic_id)
+            .order_by(m.MultibranchOperatorAssignment.created_at.desc())
+        ).all()
+        return [doc(r) for r in rows]
+
+    @app.post("/api/v1/ops/multibranch-operators", status_code=201)
+    def assign_multibranch_operator_endpoint(
+        payload: sch.MultibranchOperatorCreate,
+        ctx_tuple=Depends(require_principal_perm("staff.manage")),
+    ):
+        db, clinic_id, actor, principal = ctx_tuple
+        return doc(
+            release_sync_and_scheduling_ai.assign_multibranch_operator(
+                db, clinic_id, principal.staff_id, actor, payload
+            )
+        )
+
+    @app.get("/api/v1/ops/offline-sync")
+    def list_offline_sync_mutations_endpoint(context=Depends(require_perm("operations.read"))):
+        db, clinic_id, _ = context
+        rows = db.scalars(
+            select(m.OfflineSyncMutation)
+            .where(m.OfflineSyncMutation.clinic_id == clinic_id)
+            .order_by(m.OfflineSyncMutation.created_at.desc())
+        ).all()
+        return [doc(r) for r in rows]
+
+    @app.post("/api/v1/ops/offline-sync", status_code=201)
+    def apply_offline_sync_endpoint(
+        payload: sch.OfflineSyncMutationCreate,
+        ctx_tuple=Depends(require_principal_perm("context.read")),
+    ):
+        db, _, _, principal = ctx_tuple
+        return doc(
+            release_sync_and_scheduling_ai.apply_offline_sync_mutation(db, principal, payload)
+        )
+
+    @app.post("/api/v1/ai/appointments/{appointment_id}/noshow-risk", status_code=201)
+    def evaluate_noshow_risk_endpoint(
+        appointment_id: str,
+        payload: sch.NoshowRiskRequest,
+        context=Depends(require_perm("appointment.write")),
+    ):
+        db, clinic_id, actor = context
+        return doc(
+            release_sync_and_scheduling_ai.evaluate_calibrated_noshow_risk(
+                db, clinic_id, appointment_id, actor, cfg.ai_assist_enabled, payload
+            )
+        )
+
+    @app.post("/api/v1/ai/scheduling/cpsat-optimize", status_code=201)
+    def run_cpsat_optimize_endpoint(
+        payload: sch.CpsatOptimizeRequest,
+        context=Depends(require_perm("appointment.write")),
+    ):
+        db, clinic_id, actor = context
+        return release_sync_and_scheduling_ai.run_timeout_safe_cpsat_optimizer(
+            db, clinic_id, actor, payload
+        )
 
     @app.get("/api/v1/audit-events/page")
     def list_audit_events_paginated(

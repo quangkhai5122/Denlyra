@@ -36,6 +36,7 @@ def migration_smoke(temp):
     command.upgrade(config, "0009_encounter_lifecycle_and_clinical_governance")
     command.upgrade(config, "0010_odontogram_referrals_delegation_and_ops")
     command.upgrade(config, "0011_facility_optimizer_receipts_comms_and_cutover")
+    command.upgrade(config, "0012_telemetry_onboarding_incident_portal_and_hr")
     command.upgrade(config, "head")
     engine = create_engine(url)
     try:
@@ -52,11 +53,12 @@ def migration_smoke(temp):
         assert "odontogram_restoration_state" in tables and "external_referral_document" in tables and "temporary_delegation_grant" in tables
         assert "facility_license_profile" in tables and "financial_receipt_export" in tables and "migration_cutover_plan" in tables
         assert "redacted_telemetry_event" in tables and "supply_chain_attestation" in tables and "staff_competency_record" in tables
+        assert "terminology_mapping_rule" in tables and "scheduled_report_export" in tables and "cpsat_optimization_run" in tables
         with engine.connect() as connection:
-            assert connection.exec_driver_sql("SELECT version_num FROM alembic_version").scalar() == "0012_telemetry_onboarding_incident_portal_and_hr"
+            assert connection.exec_driver_sql("SELECT version_num FROM alembic_version").scalar() == "0013_terminology_templates_lab_reports_sync_and_ai"
     finally:
         engine.dispose()
-    print(f"SQLite Alembic smoke PASS: {len(tables) - 1} domain tables; head 0012_telemetry_onboarding_incident_portal_and_hr")
+    print(f"SQLite Alembic smoke PASS: {len(tables) - 1} domain tables; head 0013_terminology_templates_lab_reports_sync_and_ai")
 
 
 def cli_smoke(temp):
