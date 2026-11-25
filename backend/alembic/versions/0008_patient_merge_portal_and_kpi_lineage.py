@@ -231,13 +231,21 @@ def upgrade():
         sa.ForeignKeyConstraint(["clinic_id", "patient_id"], ["patient.clinic_id", "patient.id"]),
     )
 
-    now_iso = datetime.now(timezone.utc).replace(tzinfo=None).strftime("%Y-%m-%d %H:%M:%S")
-    op.execute(
-        sa.text(
-            "INSERT INTO schema_migration_meta (revision_id, description, applied_at) "
-            "VALUES ('0008_patient_merge_portal_and_kpi_lineage', "
-            "'T015 reversible patient merge/break-glass/portal + T016 price catalog/discount/KPI lineage', :ts)"
-        ).bindparams(ts=now_iso)
+    now_dt = datetime.now(timezone.utc).replace(tzinfo=None)
+    op.bulk_insert(
+        sa.table(
+            "schema_migration_meta",
+            sa.column("revision_id", sa.String),
+            sa.column("description", sa.String),
+            sa.column("applied_at", sa.DateTime),
+        ),
+        [
+            {
+                "revision_id": "0008_patient_merge_portal_and_kpi_lineage",
+                "description": "T015 reversible patient merge/break-glass/portal + T016 price catalog/discount/KPI lineage",
+                "applied_at": now_dt,
+            }
+        ],
     )
 
 

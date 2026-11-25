@@ -287,13 +287,21 @@ def upgrade():
         sa.Column("created_at", sa.DateTime(), nullable=False),
     )
 
-    now_iso = datetime.now(timezone.utc).replace(tzinfo=None).strftime("%Y-%m-%d %H:%M:%S")
-    op.execute(
-        sa.text(
-            "INSERT INTO schema_migration_meta (revision_id, description, applied_at) "
-            "VALUES ('0011_facility_optimizer_receipts_comms_and_cutover', "
-            "'T021 facility licensing/optimizer/receipts/HR + T022 reviewed comms/satisfaction/cutover', :ts)"
-        ).bindparams(ts=now_iso)
+    now_dt = datetime.now(timezone.utc).replace(tzinfo=None)
+    op.bulk_insert(
+        sa.table(
+            "schema_migration_meta",
+            sa.column("revision_id", sa.String),
+            sa.column("description", sa.String),
+            sa.column("applied_at", sa.DateTime),
+        ),
+        [
+            {
+                "revision_id": "0011_facility_optimizer_receipts_comms_and_cutover",
+                "description": "T021 facility licensing/optimizer/receipts/HR + T022 reviewed comms/satisfaction/cutover",
+                "applied_at": now_dt,
+            }
+        ],
     )
 
 

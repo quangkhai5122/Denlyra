@@ -193,13 +193,21 @@ def upgrade():
     )
 
     bind = op.get_bind()
-    now_iso = datetime.now(timezone.utc).replace(tzinfo=None).strftime("%Y-%m-%d %H:%M:%S")
-    op.execute(
-        sa.text(
-            "INSERT INTO schema_migration_meta (revision_id, description, applied_at) "
-            "VALUES ('0004_lab_consent_finance_and_migration', "
-            "'T006 paper quarantine importer, T007 consent/lab partner portal, T008 revenue ledger', :ts)"
-        ).bindparams(ts=now_iso)
+    now_dt = datetime.now(timezone.utc).replace(tzinfo=None)
+    op.bulk_insert(
+        sa.table(
+            "schema_migration_meta",
+            sa.column("revision_id", sa.String),
+            sa.column("description", sa.String),
+            sa.column("applied_at", sa.DateTime),
+        ),
+        [
+            {
+                "revision_id": "0004_lab_consent_finance_and_migration",
+                "description": "T006 paper quarantine importer, T007 consent/lab partner portal, T008 revenue ledger",
+                "applied_at": now_dt,
+            }
+        ],
     )
     if bind.dialect.name == "sqlite":
         op.execute(SQLITE_ALLOCATION_BOUNDS_TRIGGER)

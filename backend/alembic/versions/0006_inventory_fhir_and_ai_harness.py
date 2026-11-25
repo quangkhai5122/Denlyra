@@ -189,13 +189,21 @@ def upgrade():
     )
 
     bind = op.get_bind()
-    now_iso = datetime.now(timezone.utc).replace(tzinfo=None).strftime("%Y-%m-%d %H:%M:%S")
-    op.execute(
-        sa.text(
-            "INSERT INTO schema_migration_meta (revision_id, description, applied_at) "
-            "VALUES ('0006_inventory_fhir_and_ai_harness', "
-            "'T011 append-only inventory lot ledger & dual control + T012 FHIR R4 & AI safety harness', :ts)"
-        ).bindparams(ts=now_iso)
+    now_dt = datetime.now(timezone.utc).replace(tzinfo=None)
+    op.bulk_insert(
+        sa.table(
+            "schema_migration_meta",
+            sa.column("revision_id", sa.String),
+            sa.column("description", sa.String),
+            sa.column("applied_at", sa.DateTime),
+        ),
+        [
+            {
+                "revision_id": "0006_inventory_fhir_and_ai_harness",
+                "description": "T011 append-only inventory lot ledger & dual control + T012 FHIR R4 & AI safety harness",
+                "applied_at": now_dt,
+            }
+        ],
     )
     if bind.dialect.name == "sqlite":
         op.execute(SQLITE_STOCK_MOVEMENT_NO_UPDATE_TRIGGER)

@@ -109,13 +109,26 @@ def upgrade():
     )
 
     bind = op.get_bind()
-    now_iso = datetime.now(timezone.utc).replace(tzinfo=None).strftime("%Y-%m-%d %H:%M:%S")
-    op.execute(
-        sa.text(
-            "INSERT INTO schema_migration_meta (revision_id, description, applied_at) "
-            "VALUES ('0001_demo', 'Frozen R0 baseline schema', :ts), "
-            "('0002_hardening', 'T001 auth revocation/signed URLs, T002 booking idempotency, T003 FormRegistry', :ts)"
-        ).bindparams(ts=now_iso)
+    now_dt = datetime.now(timezone.utc).replace(tzinfo=None)
+    op.bulk_insert(
+        sa.table(
+            "schema_migration_meta",
+            sa.column("revision_id", sa.String),
+            sa.column("description", sa.String),
+            sa.column("applied_at", sa.DateTime),
+        ),
+        [
+            {
+                "revision_id": "0001_demo",
+                "description": "Frozen R0 baseline schema",
+                "applied_at": now_dt,
+            },
+            {
+                "revision_id": "0002_hardening",
+                "description": "T001 auth revocation/signed URLs, T002 booking idempotency, T003 FormRegistry",
+                "applied_at": now_dt,
+            },
+        ],
     )
     if bind.dialect.name == "sqlite":
         op.execute(SQLITE_BOOKING_OVERLAP_TRIGGER)

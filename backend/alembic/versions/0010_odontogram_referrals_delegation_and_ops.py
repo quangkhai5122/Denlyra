@@ -212,13 +212,21 @@ def upgrade():
         sa.ForeignKeyConstraint(["clinic_id", "patient_id"], ["patient.clinic_id", "patient.id"]),
     )
 
-    now_iso = datetime.now(timezone.utc).replace(tzinfo=None).strftime("%Y-%m-%d %H:%M:%S")
-    op.execute(
-        sa.text(
-            "INSERT INTO schema_migration_meta (revision_id, description, applied_at) "
-            "VALUES ('0010_odontogram_referrals_delegation_and_ops', "
-            "'T019 odontogram revisions/referrals/export + T020 multi-branch/delegation/handoffs/complaints/ops assistant', :ts)"
-        ).bindparams(ts=now_iso)
+    now_dt = datetime.now(timezone.utc).replace(tzinfo=None)
+    op.bulk_insert(
+        sa.table(
+            "schema_migration_meta",
+            sa.column("revision_id", sa.String),
+            sa.column("description", sa.String),
+            sa.column("applied_at", sa.DateTime),
+        ),
+        [
+            {
+                "revision_id": "0010_odontogram_referrals_delegation_and_ops",
+                "description": "T019 odontogram revisions/referrals/export + T020 multi-branch/delegation/handoffs/complaints/ops assistant",
+                "applied_at": now_dt,
+            }
+        ],
     )
 
 
