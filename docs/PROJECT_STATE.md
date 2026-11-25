@@ -3,7 +3,7 @@
 ## Current status
 Research-grade **synthetic-only demonstrator**, version `0.1.0`.
 - Thirty foundational engineering packets (`T000`–`T030`) now have verified synthetic domain, API, migration, frontend, and negative-test implementations (`ADR-006`..`ADR-020`), covering **`216/222` (`97.3%`)** catalog IDs as synthetic demo foundations (`D`).
-- `T002` frozen Alembic migration chain (`0001_demo` -> `0015_iac_insurance_lora_plan_attestation_and_channels`, hardened for PostgreSQL 16 strict `VARCHAR(128)` version columns, portable boolean `CheckConstraint`s, and single-statement PL/pgSQL triggers), atomic multi-resource booking, SQLite triggers, 2-connection race harness, `scripts/verify_postgres_live.py`, and GitHub Actions `postgres-concurrency-tests` (`postgres:16`) are implemented.
+- `T002` frozen Alembic migration chain (`0001_demo` -> `0015_iac_insurance_lora_plan_attestation_and_channels`, hardened for PostgreSQL 16 strict `VARCHAR(128)` version columns, typed UTC `datetime` binds for `psycopg 3`, portable boolean `CheckConstraint`s, and single-statement PL/pgSQL triggers), atomic multi-resource booking, and **live PostgreSQL 16 (`postgres:16`) `EXCLUDE USING gist` concurrent booking race proof are completed and verified** (GitHub Actions `postgres-concurrency-tests` Run `#45585785317` on commit `622d4cb9253a9fcb22535ce3da122f7861186ab9`).
 - `T003` quarantined synthetic `FormRegistry` (`INV-022`), `T004` real legal e-signing, `T010` statutory retention schedules, and the 6 remaining `—` catalog gates (`AI-013`, `INT-006`, `INT-010`, `SEC-003`, `SEC-005`, `SEC-009`) remain gated on human clinical/legal/security sign-off in [NEEDS_CLINICAL_REVIEW.md](clinical/NEEDS_CLINICAL_REVIEW.md) and [RETENTION_AND_DR_POLICY.md](operations/RETENTION_AND_DR_POLICY.md).
 - **Not production, not approved EMR, not legally signed clinical records.**
 
@@ -46,7 +46,7 @@ Mandatory opening/closing and Vietnamese report: [AGENT_WORKFLOW](engineering/AG
 |---|---|---|
 | [T000](tasks/T000_REPOSITORY_ONBOARDING.md) | Completed | [2026-11-17 session](sessions/2026-11-17_T000_ONBOARDING.md) |
 | [T001](tasks/T001_HARDEN_IDENTITY.md) | Completed (synthetic foundation) | [ADR-007](adr/ADR-007-identity-and-authorization.md), `test_identity_auth.py`; live OIDC & `SEC-G1` review pending |
-| [T002](tasks/T002_POSTGRES_BOOKING.md) | Completed in code + PostgreSQL 16 strict DDL fixes (`env.py`/`0002`/`0007`/`0009`); verify CI `postgres-concurrency-tests` receipt | GitHub Actions `postgres-concurrency-tests` (`postgres:16`) |
+| [T002](tasks/T002_POSTGRES_BOOKING.md) | Completed (SQLite + live PostgreSQL 16 `EXCLUDE USING gist` verified) | GitHub Actions `postgres-concurrency-tests` (`postgres:16`) Run `#45585785317` (`622d4cb`) |
 | [T003](tasks/T003_FORM_MAPPING.md) | Blocked on human clinical/legal sign-off (safe synthetic `FormRegistry` complete) | [NEEDS_CLINICAL_REVIEW.md](clinical/NEEDS_CLINICAL_REVIEW.md), `test_form_registry.py` |
 | [T004](tasks/T004_SIGNATURE_DOCUMENTS.md) | Synthetic adapter slice completed; real legal signing blocked on `NEEDS_CLINICAL_REVIEW.md` | [ADR-008](adr/ADR-008-treatment-journey-and-signature-envelope.md), `signing.py`, `test_signature_documents.py` |
 | [T005](tasks/T005_TREATMENT_E2E.md) | Completed (synthetic domain/API slice) | [ADR-008](adr/ADR-008-treatment-journey-and-signature-envelope.md), `test_treatment_journey_e2e.py` |

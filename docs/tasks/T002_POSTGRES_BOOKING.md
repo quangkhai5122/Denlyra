@@ -1,7 +1,7 @@
 # T002 — PostgreSQL constraints and concurrent booking proof
 Priority P0 · Owner: Platform/Scheduling Agent · Depends T001 or isolated integration
 
-**Status (2026-11-18):** In progress — explicit Alembic migration chain (`0001_demo` -> `0002_hardening`), atomic doctor+chair+equipment booking, `IntegrityError` -> `409` rollback, idempotency keys, SQLite trigger + 2-connection barrier test harness implemented (`backend/tests/test_scheduling_concurrency.py`). **Blocked on a live PostgreSQL server (`DENLYRA_TEST_POSTGRES_URL`) for final PostgreSQL exclusion acceptance.**
+**Status (2026-11-25):** Completed — explicit Alembic migration chain (`0001_demo` -> `0015_iac_insurance_lora_plan_attestation_and_channels`), atomic doctor+chair+equipment booking, `IntegrityError` -> `409` rollback, idempotency keys, SQLite trigger, 2-connection barrier test harness, and **live PostgreSQL 16 (`postgres:16`) `EXCLUDE USING gist` concurrent race proof verified in GitHub Actions Run `#45585785317`** (`https://github.com/quangkhai5122/Denlyra/actions/runs/45585785317`, commit `622d4cb9253a9fcb22535ce3da122f7861186ab9`).
 
 ## Goal
 Confirm that two concurrent requests cannot occupy same doctor/chair/time, without relying on pre-read in application.
