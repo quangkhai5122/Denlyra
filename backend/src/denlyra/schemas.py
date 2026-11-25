@@ -1245,3 +1245,146 @@ class CpsatOptimizeRequest(BaseModel):
         if self.window_end_at <= self.window_start_at:
             raise ValueError("window_end_at must exceed window_start_at")
         return self
+
+
+class CancellationOutreachPolicyCreate(BaseModel):
+    policy_code: str = Field(min_length=3, max_length=60)
+    max_candidates_per_slot: StrictInt = Field(default=3, ge=1, le=20)
+    require_marketing_consent: bool = True
+    prioritization_mode: Literal["fifo_waitlist_only"] = "fifo_waitlist_only"
+    clinical_triage_inferred: Literal[False] = False
+    auto_book_without_confirmation: Literal[False] = False
+    approve_immediately: bool = False
+
+
+class CancellationOutreachExecuteRequest(BaseModel):
+    policy_id: str
+
+
+class LoadBenchmarkRunRequest(BaseModel):
+    workload_profile: Literal["clinic_read_mix", "booking_conflict_check"] = "clinic_read_mix"
+    iterations: StrictInt = Field(default=20, ge=5, le=200)
+    claim_production_sla: bool = False
+
+
+class OidcGroupMappingCreate(BaseModel):
+    idp_issuer: str = Field(min_length=8, max_length=200)
+    external_group_id: str = Field(min_length=2, max_length=120)
+    branch_id: str = Field(default="branch-main", min_length=2, max_length=36)
+    mapped_role: Literal[
+        "clinic_owner",
+        "medical_director",
+        "dentist",
+        "assistant",
+        "receptionist",
+        "treatment_coordinator",
+        "finance",
+    ]
+
+    @model_validator(mode="after")
+    def check_oidc_mapping(self):
+        if not self.idp_issuer.startswith("https://"):
+            raise ValueError("idp_issuer must use https://")
+        if "*" in self.external_group_id:
+            raise ValueError("Wildcard external_group_id is forbidden (ORG-010)")
+        return self
+
+
+class OidcDirectorySyncRequest(BaseModel):
+    idp_issuer: str = Field(min_length=8, max_length=200)
+    staff_id: str
+    external_subject: str = Field(min_length=3, max_length=120)
+    active_in_directory: bool = True
+    external_groups: list[str] = Field(default_factory=list, max_length=30)
+
+
+class MessagingOptOutWebhookRequest(BaseModel):
+    patient_id: str
+    channel: Literal["zalo_zns_sandbox", "sms_sandbox", "email_sandbox"]
+    keyword: str = Field(default="STOP", min_length=2, max_length=32)
+    provider_event_id: str = Field(min_length=3, max_length=80)
+
+
+class MessagingSandboxSendRequest(BaseModel):
+    patient_id: str
+    channel: Literal["zalo_zns_sandbox", "sms_sandbox", "email_sandbox"]
+    purpose: Literal["appointment_reminder", "marketing_recall"]
+    template_code: str = Field(min_length=3, max_length=60)
+    rendered_body_minimized: str = Field(min_length=5, max_length=320)
+    idempotency_key: str = Field(min_length=3, max_length=120)
+
+
+class PaymentSandboxWebhookRequest(BaseModel):
+    provider_code: str = Field(default="SYNTHETIC-VN-PAY-SANDBOX", min_length=3, max_length=60)
+    provider_event_id: str = Field(min_length=3, max_length=100)
+    event_type: Literal["payment.succeeded", "payment.reversed"]
+    patient_id: str
+    amount_vnd: StrictInt = Field(gt=0, le=2_000_000_000)
+    payment_reference: str = Field(min_length=2, max_length=120)
+    original_payment_id: str | None = None
+    timestamp_unix: StrictInt
+    hmac_signature_hex: str = Field(min_length=64, max_length=64)
+
+
+class DicomModalityRegisterCreate(BaseModel):
+    ae_title: str = Field(min_length=2, max_length=32)
+    modality_code: Literal["CBCT", "PANORAMIC", "IO_SENSOR"]
+    device_label: str = Field(min_length=3, max_length=160)
+    confirmed_for_clinic: bool = True
+
+
+class DicomStudyManifestIngestCreate(BaseModel):
+    patient_id: str
+    modality_id: str
+    study_instance_uid: str = Field(min_length=5, max_length=128)
+    dicom_patient_id_tag: str = Field(min_length=2, max_length=64)
+    series_count: StrictInt = Field(ge=1, le=200)
+    instance_count: StrictInt = Field(ge=1, le=5000)
+    study_sha256: str = Field(min_length=64, max_length=64)
+    claim_diagnostic_samd: bool = False
+
+
+class SpeechDictationTranscribeRequest(BaseModel):
+    encounter_id: str
+    audio_sha256: str = Field(min_length=64, max_length=64)
+    audio_recording_consent_verified: bool
+    synthetic_transcript_vi: str = Field(min_length=3, max_length=2000)
+
+
+class AccountingExportCreate(BaseModel):
+    period_label: str = Field(min_length=4, max_length=32)
+    provider_profile: str = Field(
+        default="SYNTHETIC-ACCOUNTING-CSV-JSON", min_length=3, max_length=64
+    )
+    include_patient_clinical_phi: Literal[False] = False
+    issue_official_tax_einvoice: bool = False
+    call_government_tax_api: bool = False
+
+
+class AdversarialSecurityRunRequest(BaseModel):
+    ssrf_probe_urls: list[str] = Field(
+        default_factory=lambda: [
+            "http://169.254.169.254/latest/meta-data/",
+            "http://127.0.0.1:5432/",
+            "file:///etc/passwd",
+        ],
+        min_length=1,
+        max_length=20,
+    )
+    traversal_filenames: list[str] = Field(
+        default_factory=lambda: [
+            "../../etc/passwd",
+            "..\\..\\windows\\win.ini",
+            "chart.pdf.exe",
+        ],
+        min_length=1,
+        max_length=20,
+    )
+
+
+class ProductionReleaseGateRequest(BaseModel):
+    target_environment: Literal["synthetic_local", "production_phi"] = "synthetic_local"
+    enable_real_phi_processing: bool = False
+    named_clinical_director_signoff: str | None = None
+    named_legal_counsel_signoff: str | None = None
+    independent_security_auditor_signoff: str | None = None

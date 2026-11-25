@@ -2109,6 +2109,30 @@ export default function ClinicWorkspacePage() {
               >
                 Xuất Báo cáo KPI Mã hóa Không PHI (RPT-010)
               </button>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={async () => {
+                  setConflictMsg("");
+                  const [benchRes, advRes] = await Promise.all([
+                    client.runLocalLoadBenchmark({
+                      workload_profile: "clinic_read_mix",
+                      iterations: 15,
+                      claim_production_sla: false,
+                    }),
+                    client.runAdversarialSecuritySuite(),
+                  ]);
+                  if (!benchRes.ok)
+                    return handleApiFailure(benchRes.status, benchRes.detail, benchRes.conflict);
+                  if (!advRes.ok)
+                    return handleApiFailure(advRes.status, advRes.detail, advRes.conflict);
+                  setStatusMsg(
+                    `Đo kiểm Độ trễ Cục bộ (OPS-008, no-SLA=${String(!benchRes.data.claims_production_sla)}): P50=${benchRes.data.p50_latency_us}µs, P95=${benchRes.data.p95_latency_us}µs, ${benchRes.data.throughput_ops_per_sec} ops/s · Kiểm thử Đối kháng SSRF/Traversal (SEC-014): blocked=${String(advRes.data.all_vectors_blocked)}, external_pentest=${String(advRes.data.independent_external_pentest_complete)}.`,
+                  );
+                }}
+              >
+                Chạy Đo kiểm Độ trễ &amp; Kiểm thử Đối kháng Bảo mật (OPS-008 / SEC-014)
+              </button>
             </div>
           </section>
         </div>

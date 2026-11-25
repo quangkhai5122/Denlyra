@@ -14,6 +14,19 @@ export interface AITimelineSummaryRequest {
   patient_id: string;
 }
 
+export interface AccountingExportCreate {
+  period_label: string;
+  provider_profile?: string;
+  include_patient_clinical_phi?: boolean;
+  issue_official_tax_einvoice?: boolean;
+  call_government_tax_api?: boolean;
+}
+
+export interface AdversarialSecurityRunRequest {
+  ssrf_probe_urls?: string[];
+  traversal_filenames?: string[];
+}
+
 export interface AllocationCreate {
   charge_id: string;
   payment_id: string;
@@ -83,6 +96,20 @@ export interface BreakGlassCreateRequest {
 export interface BreakGlassReviewRequest {
   outcome: "reviewed_justified" | "reviewed_violation";
   review_notes: string;
+}
+
+export interface CancellationOutreachExecuteRequest {
+  policy_id: string;
+}
+
+export interface CancellationOutreachPolicyCreate {
+  policy_code: string;
+  max_candidates_per_slot?: number;
+  require_marketing_consent?: boolean;
+  prioritization_mode?: string;
+  clinical_triage_inferred?: boolean;
+  auto_book_without_confirmation?: boolean;
+  approve_immediately?: boolean;
 }
 
 export interface CancellationRecoveryRequest {
@@ -174,6 +201,24 @@ export interface DentalFindingCreate {
   tooth_code: string;
   surface: string;
   finding_text_demo: string;
+}
+
+export interface DicomModalityRegisterCreate {
+  ae_title: string;
+  modality_code: "CBCT" | "PANORAMIC" | "IO_SENSOR";
+  device_label: string;
+  confirmed_for_clinic?: boolean;
+}
+
+export interface DicomStudyManifestIngestCreate {
+  patient_id: string;
+  modality_id: string;
+  study_instance_uid: string;
+  dicom_patient_id_tag: string;
+  series_count: number;
+  instance_count: number;
+  study_sha256: string;
+  claim_diagnostic_samd?: boolean;
 }
 
 export interface DiscountDecisionRequest {
@@ -400,6 +445,12 @@ export interface LabVendorPriceCreate {
   remake_surcharge_vnd?: number;
 }
 
+export interface LoadBenchmarkRunRequest {
+  workload_profile?: "clinic_read_mix" | "booking_conflict_check";
+  iterations?: number;
+  claim_production_sla?: boolean;
+}
+
 export interface LongitudinalOverlayCreate {
   tooth_code: string;
   baseline_archive_object_id: string;
@@ -416,6 +467,22 @@ export interface MedicalRiskReviewCreate {
   cardiovascular_hypertension_state?: "present" | "explicit_negative" | "unknown" | "not_applicable" | "unanswered";
   pregnancy_nursing_state?: "present" | "explicit_negative" | "unknown" | "not_applicable" | "unanswered";
   source?: "patient_interview_demo" | "clinician_review_demo" | "legacy_record_demo";
+}
+
+export interface MessagingOptOutWebhookRequest {
+  patient_id: string;
+  channel: "zalo_zns_sandbox" | "sms_sandbox" | "email_sandbox";
+  keyword?: string;
+  provider_event_id: string;
+}
+
+export interface MessagingSandboxSendRequest {
+  patient_id: string;
+  channel: "zalo_zns_sandbox" | "sms_sandbox" | "email_sandbox";
+  purpose: "appointment_reminder" | "marketing_recall";
+  template_code: string;
+  rendered_body_minimized: string;
+  idempotency_key: string;
 }
 
 export interface MigrationCutoverPlanCreate {
@@ -484,6 +551,21 @@ export interface OfflineSyncMutationCreate {
   base_version: number;
   resolution_strategy?: string;
   payload?: Record<string, unknown>;
+}
+
+export interface OidcDirectorySyncRequest {
+  idp_issuer: string;
+  staff_id: string;
+  external_subject: string;
+  active_in_directory?: boolean;
+  external_groups?: string[];
+}
+
+export interface OidcGroupMappingCreate {
+  idp_issuer: string;
+  external_group_id: string;
+  branch_id?: string;
+  mapped_role: "clinic_owner" | "medical_director" | "dentist" | "assistant" | "receptionist" | "treatment_coordinator" | "finance";
 }
 
 export interface OpsAssistantQueryRequest {
@@ -556,6 +638,18 @@ export interface PaymentCreate {
   payment_method?: "cash" | "bank_transfer" | "card";
   external_reference?: string | null;
   idempotency_key?: string | null;
+}
+
+export interface PaymentSandboxWebhookRequest {
+  provider_code?: string;
+  provider_event_id: string;
+  event_type: "payment.succeeded" | "payment.reversed";
+  patient_id: string;
+  amount_vnd: number;
+  payment_reference: string;
+  original_payment_id?: string | null;
+  timestamp_unix: number;
+  hmac_signature_hex: string;
 }
 
 export interface PerformedProcedureCreate {
@@ -657,6 +751,14 @@ export interface ProcedureDurationTemplateCreate {
   recommended_minutes: number;
   buffer_minutes?: number;
   fallback_minutes?: number;
+}
+
+export interface ProductionReleaseGateRequest {
+  target_environment?: "synthetic_local" | "production_phi";
+  enable_real_phi_processing?: boolean;
+  named_clinical_director_signoff?: string | null;
+  named_legal_counsel_signoff?: string | null;
+  independent_security_auditor_signoff?: string | null;
 }
 
 export interface PurchaseOrderCreate {
@@ -835,6 +937,13 @@ export interface SpecialtyTaskBlueprintItem {
   title: string;
 }
 
+export interface SpeechDictationTranscribeRequest {
+  encounter_id: string;
+  audio_sha256: string;
+  audio_recording_consent_verified: boolean;
+  synthetic_transcript_vi: string;
+}
+
 export interface StaffAttendanceCreate {
   staff_id: string;
   check_in_at: string;
@@ -1004,6 +1113,8 @@ export const OPENAPI_OPERATIONS = [
   "GET /api/v1/ai/models",
   "POST /api/v1/ai/ops-assistant/query",
   "POST /api/v1/ai/scheduling/cpsat-optimize",
+  "GET /api/v1/ai/speech-drafts",
+  "POST /api/v1/ai/speech-drafts/transcribe",
   "GET /api/v1/appointments",
   "POST /api/v1/appointments",
   "GET /api/v1/appointments/page",
@@ -1034,6 +1145,9 @@ export const OPENAPI_OPERATIONS = [
   "GET /api/v1/auth/delegations",
   "POST /api/v1/auth/delegations",
   "POST /api/v1/auth/delegations/{grant_id}/revoke",
+  "POST /api/v1/auth/oidc/directory-sync",
+  "GET /api/v1/auth/oidc/group-mappings",
+  "POST /api/v1/auth/oidc/group-mappings",
   "POST /api/v1/auth/revoke",
   "POST /api/v1/auth/signed-urls",
   "POST /api/v1/auth/token",
@@ -1052,6 +1166,9 @@ export const OPENAPI_OPERATIONS = [
   "POST /api/v1/clinical-forms/validate-preview",
   "POST /api/v1/consents",
   "POST /api/v1/consents/{consent_id}/withdraw",
+  "POST /api/v1/crm/appointments/{appointment_id}/cancellation-outreach",
+  "GET /api/v1/crm/cancellation-outreach-policies",
+  "POST /api/v1/crm/cancellation-outreach-policies",
   "GET /api/v1/crm/complaints",
   "POST /api/v1/crm/complaints",
   "GET /api/v1/crm/reminder-templates",
@@ -1075,6 +1192,8 @@ export const OPENAPI_OPERATIONS = [
   "GET /api/v1/encounters/{encounter_id}/performed-procedures",
   "POST /api/v1/encounters/{encounter_id}/performed-procedures",
   "GET /api/v1/encounters/{encounter_id}/snapshots",
+  "GET /api/v1/finance/accounting-exports",
+  "POST /api/v1/finance/accounting-exports",
   "POST /api/v1/finance/allocations",
   "GET /api/v1/finance/charges",
   "POST /api/v1/finance/charges",
@@ -1105,6 +1224,15 @@ export const OPENAPI_OPERATIONS = [
   "POST /api/v1/hr/competencies",
   "POST /api/v1/hr/competencies/validate-assignment",
   "GET /api/v1/hr/overtime-summary",
+  "GET /api/v1/integrations/messaging-sandbox/dispatches",
+  "POST /api/v1/integrations/messaging-sandbox/opt-out-webhook",
+  "POST /api/v1/integrations/messaging-sandbox/send",
+  "POST /api/v1/integrations/payment-sandbox/webhook",
+  "GET /api/v1/integrations/payment-sandbox/webhooks",
+  "GET /api/v1/interop/dicom/modalities",
+  "POST /api/v1/interop/dicom/modalities",
+  "GET /api/v1/interop/dicom/studies",
+  "POST /api/v1/interop/dicom/studies/ingest-manifest",
   "GET /api/v1/interop/fhir/r4/patients/{patient_id}/bundle",
   "POST /api/v1/interop/fhir/r4/validate-bundle",
   "POST /api/v1/inventory/adjustments",
@@ -1173,6 +1301,8 @@ export const OPENAPI_OPERATIONS = [
   "POST /api/v1/operations/waitlist",
   "POST /api/v1/operations/waitlist/{entry_id}/confirm-booking",
   "POST /api/v1/operations/waitlist/{entry_id}/prepare-outreach",
+  "GET /api/v1/ops/load-benchmarks",
+  "POST /api/v1/ops/load-benchmarks/run",
   "GET /api/v1/ops/multibranch-operators",
   "POST /api/v1/ops/multibranch-operators",
   "GET /api/v1/ops/offline-sync",
@@ -1244,9 +1374,12 @@ export const OPENAPI_OPERATIONS = [
   "POST /api/v1/scheduling/duration-templates",
   "POST /api/v1/scheduling/optimizer/proposals/{proposal_id}/accept",
   "POST /api/v1/scheduling/optimizer/propose",
+  "POST /api/v1/security/adversarial-suite/run",
   "GET /api/v1/security/incidents",
   "POST /api/v1/security/incidents",
   "POST /api/v1/security/incidents/{incident_id}/transition",
+  "GET /api/v1/security/release-gates",
+  "POST /api/v1/security/release-gates/evaluate",
   "POST /api/v1/security/supply-chain/verify",
   "GET /api/v1/signed-download/{grant_token}",
   "POST /api/v1/staff",
@@ -1685,5 +1818,11 @@ export class DenlyraApiClient {
   }
   exportEncryptedScheduledReport(payload: ScheduledReportExportCreate) {
     return this.request<{ id: string; report_kind: string; include_phi: boolean; key_version: number; ciphertext_sha256: string }>("POST", "reports/scheduled-exports", payload);
+  }
+  runLocalLoadBenchmark(payload?: LoadBenchmarkRunRequest) {
+    return this.request<{ id: string; workload_profile: string; iterations: number; p50_latency_us: number; p95_latency_us: number; max_latency_us: number; throughput_ops_per_sec: number; claims_production_sla: boolean }>("POST", "ops/load-benchmarks/run", payload ?? {});
+  }
+  runAdversarialSecuritySuite(payload?: AdversarialSecurityRunRequest) {
+    return this.request<{ id: string; ssrf_probes_blocked: number; traversal_probes_blocked: number; all_vectors_blocked: boolean; independent_external_pentest_complete: boolean }>("POST", "security/adversarial-suite/run", payload ?? {});
   }
 }

@@ -98,6 +98,16 @@ test("INT-001 & NEG-02: generated DenlyraApiClient sends Bearer token and surfac
   assert.ok(OPENAPI_OPERATIONS.includes("POST /api/v1/ops/releases"));
   assert.ok(OPENAPI_OPERATIONS.includes("POST /api/v1/ops/offline-sync"));
   assert.ok(OPENAPI_OPERATIONS.includes("POST /api/v1/ai/scheduling/cpsat-optimize"));
+  assert.ok(OPENAPI_OPERATIONS.includes("POST /api/v1/crm/cancellation-outreach-policies"));
+  assert.ok(OPENAPI_OPERATIONS.includes("POST /api/v1/ops/load-benchmarks/run"));
+  assert.ok(OPENAPI_OPERATIONS.includes("POST /api/v1/auth/oidc/directory-sync"));
+  assert.ok(OPENAPI_OPERATIONS.includes("POST /api/v1/integrations/messaging-sandbox/send"));
+  assert.ok(OPENAPI_OPERATIONS.includes("POST /api/v1/integrations/payment-sandbox/webhook"));
+  assert.ok(OPENAPI_OPERATIONS.includes("POST /api/v1/interop/dicom/studies/ingest-manifest"));
+  assert.ok(OPENAPI_OPERATIONS.includes("POST /api/v1/ai/speech-drafts/transcribe"));
+  assert.ok(OPENAPI_OPERATIONS.includes("POST /api/v1/finance/accounting-exports"));
+  assert.ok(OPENAPI_OPERATIONS.includes("POST /api/v1/security/adversarial-suite/run"));
+  assert.ok(OPENAPI_OPERATIONS.includes("POST /api/v1/security/release-gates/evaluate"));
 
   const capturedCalls = [];
   const origFetch = globalThis.fetch;

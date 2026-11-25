@@ -506,6 +506,12 @@ def render_typescript(openapi: dict) -> str:
             "  exportEncryptedScheduledReport(payload: ScheduledReportExportCreate) {",
             '    return this.request<{ id: string; report_kind: string; include_phi: boolean; key_version: number; ciphertext_sha256: string }>("POST", "reports/scheduled-exports", payload);',
             "  }",
+            "  runLocalLoadBenchmark(payload?: LoadBenchmarkRunRequest) {",
+            '    return this.request<{ id: string; workload_profile: string; iterations: number; p50_latency_us: number; p95_latency_us: number; max_latency_us: number; throughput_ops_per_sec: number; claims_production_sla: boolean }>("POST", "ops/load-benchmarks/run", payload ?? {});',
+            "  }",
+            "  runAdversarialSecuritySuite(payload?: AdversarialSecurityRunRequest) {",
+            '    return this.request<{ id: string; ssrf_probes_blocked: number; traversal_probes_blocked: number; all_vectors_blocked: boolean; independent_external_pentest_complete: boolean }>("POST", "security/adversarial-suite/run", payload ?? {});',
+            "  }",
             "}",
             "",
         ]

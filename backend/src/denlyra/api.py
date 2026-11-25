@@ -26,6 +26,7 @@ from . import (
     clinical_lifecycle,
     comms_satisfaction_cutover,
     continuity_governance,
+    dicom_speech_accounting_security,
     facility_optimizer_receipts_hr,
     fhir_interop,
     governance_analytics,
@@ -38,6 +39,7 @@ from . import (
     patient_portal,
     portal_access_recovery_hr,
     release_sync_and_scheduling_ai,
+    sandbox_contracts_benchmark_oidc,
     schemas as sch,
     services as svc,
     terminology_templates_lab_reports,
@@ -3276,6 +3278,282 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         db, clinic_id, actor = context
         return release_sync_and_scheduling_ai.run_timeout_safe_cpsat_optimizer(
             db, clinic_id, actor, payload
+        )
+
+    @app.get("/api/v1/crm/cancellation-outreach-policies")
+    def list_cancellation_outreach_policies_endpoint(
+        context=Depends(require_perm("operations.read")),
+    ):
+        db, clinic_id, _ = context
+        rows = db.scalars(
+            select(m.CancellationOutreachPolicy)
+            .where(m.CancellationOutreachPolicy.clinic_id == clinic_id)
+            .order_by(m.CancellationOutreachPolicy.created_at.desc())
+        ).all()
+        return [doc(r) for r in rows]
+
+    @app.post("/api/v1/crm/cancellation-outreach-policies", status_code=201)
+    def create_cancellation_outreach_policy_endpoint(
+        payload: sch.CancellationOutreachPolicyCreate,
+        ctx_tuple=Depends(require_principal_perm("staff.manage")),
+    ):
+        db, clinic_id, actor, principal = ctx_tuple
+        return doc(
+            sandbox_contracts_benchmark_oidc.create_cancellation_outreach_policy(
+                db, clinic_id, principal.staff_id, principal.role, actor, payload
+            )
+        )
+
+    @app.post(
+        "/api/v1/crm/appointments/{appointment_id}/cancellation-outreach",
+        status_code=201,
+    )
+    def execute_cancellation_outreach_endpoint(
+        appointment_id: str,
+        payload: sch.CancellationOutreachExecuteRequest,
+        context=Depends(require_perm("operations.recall")),
+    ):
+        db, clinic_id, actor = context
+        return doc(
+            sandbox_contracts_benchmark_oidc.execute_cancellation_outreach(
+                db, clinic_id, appointment_id, actor, payload
+            )
+        )
+
+    @app.get("/api/v1/ops/load-benchmarks")
+    def list_load_benchmarks_endpoint(context=Depends(require_perm("staff.manage"))):
+        db, clinic_id, _ = context
+        rows = db.scalars(
+            select(m.LoadBenchmarkRun)
+            .where(m.LoadBenchmarkRun.clinic_id == clinic_id)
+            .order_by(m.LoadBenchmarkRun.created_at.desc())
+        ).all()
+        return [doc(r) for r in rows]
+
+    @app.post("/api/v1/ops/load-benchmarks/run", status_code=201)
+    def run_load_benchmark_endpoint(
+        payload: sch.LoadBenchmarkRunRequest,
+        context=Depends(require_perm("staff.manage")),
+    ):
+        db, clinic_id, actor = context
+        return doc(
+            sandbox_contracts_benchmark_oidc.run_local_load_benchmark(
+                db, clinic_id, actor, payload
+            )
+        )
+
+    @app.get("/api/v1/auth/oidc/group-mappings")
+    def list_oidc_group_mappings_endpoint(context=Depends(require_perm("staff.manage"))):
+        db, clinic_id, _ = context
+        rows = db.scalars(
+            select(m.OidcGroupMappingRule)
+            .where(m.OidcGroupMappingRule.clinic_id == clinic_id)
+            .order_by(m.OidcGroupMappingRule.created_at.desc())
+        ).all()
+        return [doc(r) for r in rows]
+
+    @app.post("/api/v1/auth/oidc/group-mappings", status_code=201)
+    def create_oidc_group_mapping_endpoint(
+        payload: sch.OidcGroupMappingCreate,
+        ctx_tuple=Depends(require_principal_perm("staff.manage")),
+    ):
+        db, clinic_id, actor, principal = ctx_tuple
+        return doc(
+            sandbox_contracts_benchmark_oidc.create_oidc_group_mapping(
+                db, clinic_id, principal.staff_id, actor, payload
+            )
+        )
+
+    @app.post("/api/v1/auth/oidc/directory-sync", status_code=201)
+    def sync_oidc_directory_endpoint(
+        payload: sch.OidcDirectorySyncRequest,
+        context=Depends(require_perm("staff.manage")),
+    ):
+        db, clinic_id, actor = context
+        return doc(
+            sandbox_contracts_benchmark_oidc.sync_oidc_directory_membership(
+                db, clinic_id, actor, payload
+            )
+        )
+
+    @app.post("/api/v1/integrations/messaging-sandbox/opt-out-webhook", status_code=201)
+    def messaging_opt_out_webhook_endpoint(
+        payload: sch.MessagingOptOutWebhookRequest,
+        context=Depends(require_perm("operations.recall")),
+    ):
+        db, clinic_id, actor = context
+        return doc(
+            sandbox_contracts_benchmark_oidc.record_messaging_opt_out_webhook(
+                db, clinic_id, actor, payload
+            )
+        )
+
+    @app.get("/api/v1/integrations/messaging-sandbox/dispatches")
+    def list_messaging_sandbox_dispatches_endpoint(
+        context=Depends(require_perm("operations.read")),
+    ):
+        db, clinic_id, _ = context
+        rows = db.scalars(
+            select(m.MessagingSandboxDispatch)
+            .where(m.MessagingSandboxDispatch.clinic_id == clinic_id)
+            .order_by(m.MessagingSandboxDispatch.created_at.desc())
+        ).all()
+        return [doc(r) for r in rows]
+
+    @app.post("/api/v1/integrations/messaging-sandbox/send", status_code=201)
+    def send_messaging_sandbox_endpoint(
+        payload: sch.MessagingSandboxSendRequest,
+        context=Depends(require_perm("operations.recall")),
+    ):
+        db, clinic_id, actor = context
+        return doc(
+            sandbox_contracts_benchmark_oidc.send_sandbox_message(
+                db, clinic_id, actor, payload
+            )
+        )
+
+    @app.get("/api/v1/integrations/payment-sandbox/webhooks")
+    def list_payment_sandbox_webhooks_endpoint(
+        context=Depends(require_perm("finance.read")),
+    ):
+        db, clinic_id, _ = context
+        rows = db.scalars(
+            select(m.PaymentWebhookInbox)
+            .where(m.PaymentWebhookInbox.clinic_id == clinic_id)
+            .order_by(m.PaymentWebhookInbox.created_at.desc())
+        ).all()
+        return [doc(r) for r in rows]
+
+    @app.post("/api/v1/integrations/payment-sandbox/webhook", status_code=201)
+    def process_payment_sandbox_webhook_endpoint(
+        payload: sch.PaymentSandboxWebhookRequest,
+        context=Depends(require_perm("finance.write")),
+    ):
+        db, clinic_id, actor = context
+        return sandbox_contracts_benchmark_oidc.process_signed_payment_webhook(
+            db, clinic_id, cfg.auth_secret, actor, payload
+        )
+
+    @app.get("/api/v1/interop/dicom/modalities")
+    def list_dicom_modalities_endpoint(context=Depends(require_perm("odontogram.read"))):
+        db, clinic_id, _ = context
+        rows = db.scalars(
+            select(m.DicomModalityRegistration)
+            .where(m.DicomModalityRegistration.clinic_id == clinic_id)
+            .order_by(m.DicomModalityRegistration.created_at.desc())
+        ).all()
+        return [doc(r) for r in rows]
+
+    @app.post("/api/v1/interop/dicom/modalities", status_code=201)
+    def register_dicom_modality_endpoint(
+        payload: sch.DicomModalityRegisterCreate,
+        ctx_tuple=Depends(require_principal_perm("staff.manage")),
+    ):
+        db, clinic_id, actor, principal = ctx_tuple
+        return doc(
+            dicom_speech_accounting_security.register_dicom_modality(
+                db, clinic_id, principal.staff_id, actor, payload
+            )
+        )
+
+    @app.get("/api/v1/interop/dicom/studies")
+    def list_dicom_studies_endpoint(context=Depends(require_perm("odontogram.read"))):
+        db, clinic_id, _ = context
+        rows = db.scalars(
+            select(m.DicomStudyQuarantineManifest)
+            .where(m.DicomStudyQuarantineManifest.clinic_id == clinic_id)
+            .order_by(m.DicomStudyQuarantineManifest.created_at.desc())
+        ).all()
+        return [doc(r) for r in rows]
+
+    @app.post("/api/v1/interop/dicom/studies/ingest-manifest", status_code=201)
+    def ingest_dicom_study_manifest_endpoint(
+        payload: sch.DicomStudyManifestIngestCreate,
+        context=Depends(require_perm("odontogram.write")),
+    ):
+        db, clinic_id, actor = context
+        return doc(
+            dicom_speech_accounting_security.ingest_dicom_study_manifest(
+                db, clinic_id, actor, payload
+            )
+        )
+
+    @app.get("/api/v1/ai/speech-drafts")
+    def list_speech_drafts_endpoint(context=Depends(require_perm("ai.draft"))):
+        db, clinic_id, _ = context
+        rows = db.scalars(
+            select(m.SpeechTranscriptionDraft)
+            .where(m.SpeechTranscriptionDraft.clinic_id == clinic_id)
+            .order_by(m.SpeechTranscriptionDraft.created_at.desc())
+        ).all()
+        return [doc(r) for r in rows]
+
+    @app.post("/api/v1/ai/speech-drafts/transcribe", status_code=201)
+    def transcribe_speech_draft_endpoint(
+        payload: sch.SpeechDictationTranscribeRequest,
+        context=Depends(require_perm("ai.draft")),
+    ):
+        db, clinic_id, actor = context
+        return doc(
+            dicom_speech_accounting_security.transcribe_speech_dictation_draft(
+                db, clinic_id, actor, cfg.ai_assist_enabled, payload
+            )
+        )
+
+    @app.get("/api/v1/finance/accounting-exports")
+    def list_accounting_exports_endpoint(context=Depends(require_perm("finance.read"))):
+        db, clinic_id, _ = context
+        rows = db.scalars(
+            select(m.AccountingExportBatch)
+            .where(m.AccountingExportBatch.clinic_id == clinic_id)
+            .order_by(m.AccountingExportBatch.created_at.desc())
+        ).all()
+        return [doc(r) for r in rows]
+
+    @app.post("/api/v1/finance/accounting-exports", status_code=201)
+    def create_accounting_export_endpoint(
+        payload: sch.AccountingExportCreate,
+        context=Depends(require_perm("finance.allocate")),
+    ):
+        db, clinic_id, actor = context
+        return doc(
+            dicom_speech_accounting_security.export_phi_free_accounting_batch(
+                db, clinic_id, actor, payload
+            )
+        )
+
+    @app.post("/api/v1/security/adversarial-suite/run", status_code=201)
+    def run_adversarial_security_suite_endpoint(
+        payload: sch.AdversarialSecurityRunRequest,
+        context=Depends(require_perm("staff.manage")),
+    ):
+        db, clinic_id, actor = context
+        return doc(
+            dicom_speech_accounting_security.run_adversarial_security_suite(
+                db, clinic_id, actor, payload
+            )
+        )
+
+    @app.get("/api/v1/security/release-gates")
+    def list_release_gates_endpoint(context=Depends(require_perm("staff.manage"))):
+        db, clinic_id, _ = context
+        rows = db.scalars(
+            select(m.ReleaseGateEvaluation)
+            .where(m.ReleaseGateEvaluation.clinic_id == clinic_id)
+            .order_by(m.ReleaseGateEvaluation.created_at.desc())
+        ).all()
+        return [doc(r) for r in rows]
+
+    @app.post("/api/v1/security/release-gates/evaluate", status_code=201)
+    def evaluate_release_gate_endpoint(
+        payload: sch.ProductionReleaseGateRequest,
+        context=Depends(require_perm("staff.manage")),
+    ):
+        db, clinic_id, actor = context
+        return doc(
+            dicom_speech_accounting_security.evaluate_production_release_gate(
+                db, clinic_id, actor, payload
+            )
         )
 
     @app.get("/api/v1/audit-events/page")
