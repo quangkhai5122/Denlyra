@@ -419,6 +419,9 @@ def test_multibranch_report_governance_and_encrypted_phi_free_scheduled_exports(
             == 403
         )
 
+        # Pre-initialize tenant DEK via archive key rotation to verify KEK secret compatibility across archive + report exports
+        assert client.post("/api/v1/archive/keys/rotate", headers=owner_a).status_code == 201
+
         # Enroll Clinic A & Clinic B in holding-rpt-009 -> encrypted PHI-free export succeeds
         client.post(
             "/api/v1/org/branch-scope-grants",
@@ -446,3 +449,20 @@ def test_multibranch_report_governance_and_encrypted_phi_free_scheduled_exports(
         assert eb["include_phi"] is False
         raw_cipher = base64.b64decode(eb["encrypted_envelope_b64"])
         assert raw_cipher.startswith(b"DLY1")
+
+        # Single-clinic KPI scheduled export also encrypts PHI-free KPI lineage cleanly
+        single_exp = client.post(
+            "/api/v1/reports/scheduled-exports",
+            headers=owner_a,
+            json={
+                "report_kind": "single_clinic_kpi",
+                "recipient_email": "owner@denlyra-clinic.local",
+                "include_phi": False,
+            },
+        )
+        assert single_exp.status_code == 201, single_exp.text
+        assert secret_b not in single_exp.text
+        sb = single_exp.json()
+        assert sb["report_kind"] == "single_clinic_kpi"
+        assert sb["include_phi"] is False
+        assert base64.b64decode(sb["encrypted_envelope_b64"]).startswith(b"DLY1")

@@ -61,7 +61,16 @@ def _chain_pending_audit_events(session: Session, _flush_context, _instances) ->
         by_clinic.setdefault(ev.clinic_id, []).append(ev)
 
     conn = session.connection()
+    if conn.dialect.name == "sqlite":
+        raw_conn = getattr(conn.connection, "dbapi_connection", None)
+        if raw_conn is not None and not getattr(raw_conn, "in_transaction", True):
+            raw_conn.execute("BEGIN IMMEDIATE")
     for cid, events_list in by_clinic.items():
+        if conn.dialect.name == "postgresql":
+            conn.execute(
+                text("SELECT pg_advisory_xact_lock(hashtext(:lock_key))"),
+                {"lock_key": f"audit_chain:{cid}"},
+            )
         head = conn.execute(
             text(
                 "SELECT chain_seq, entry_hash FROM audit_event "

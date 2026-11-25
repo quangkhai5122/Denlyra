@@ -66,7 +66,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
     },
     "plan.read": {
         "clinic_owner", "medical_director", "dentist", "assistant",
-        "receptionist", "treatment_coordinator",
+        "receptionist", "treatment_coordinator", "finance",
     },
     "plan.write": {"medical_director", "dentist", "treatment_coordinator"},
     "plan.review": {"medical_director", "dentist"},

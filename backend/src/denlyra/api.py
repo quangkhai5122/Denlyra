@@ -3178,7 +3178,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         db, clinic_id, actor, principal = ctx_tuple
         return doc(
             terminology_templates_lab_reports.create_encrypted_scheduled_report_export(
-                db, clinic_id, principal.staff_id, actor, cfg.auth_secret, payload
+                db,
+                clinic_id,
+                principal.staff_id,
+                actor,
+                cfg.archive_master_secret,
+                payload,
             )
         )
 

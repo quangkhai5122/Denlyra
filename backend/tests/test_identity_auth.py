@@ -197,7 +197,11 @@ def test_role_boundaries_receptionist_finance_and_dentist(auth_client):
         f"/api/v1/treatment-plans/{plan['id']}/demo-review", headers=h_dentist
     ).status_code == 200
 
-    # Finance can create charges, payments, and allocations; receptionist cannot allocate
+    # Finance can read administrative plan headers for estimates, and create charges, payments, and allocations; receptionist cannot allocate
+    assert auth_client.get("/api/v1/treatment-plans", headers=h_finance).status_code == 200
+    assert auth_client.post(
+        f"/api/v1/treatment-plans/{plan['id']}/demo-review", headers=h_finance
+    ).status_code == 403
     charge = auth_client.post(
         "/api/v1/finance/charges",
         json={"patient_id": pat["id"], "label": "Phí demo", "amount_vnd": 1_000_000},

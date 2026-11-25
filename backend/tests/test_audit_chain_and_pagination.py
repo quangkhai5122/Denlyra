@@ -163,3 +163,52 @@ def test_clinic_scoped_signed_cursor_pagination_and_negative_cursor_attacks(tmp_
         assert audit_p1.status_code == 200
         assert len(audit_p1.json()["items"]) == 3
         assert audit_p1.json()["has_more"] is True
+
+
+def test_concurrent_audit_read_requests_serialize_chain_seq_without_collision(tmp_path: Path):
+    from concurrent.futures import ThreadPoolExecutor
+
+    db_file = tmp_path / "concurrent_audit.db"
+    settings = Settings(
+        demo_mode=True,
+        require_auth=True,
+        db_url=f"sqlite+pysqlite:///{db_file}",
+        archive_dir=str(tmp_path / "archive"),
+    )
+    app = create_app(settings)
+    with TestClient(app, base_url="http://127.0.0.1:8766") as client:
+        dentist_tok = client.post(
+            "/api/v1/auth/token", json={"clinic_id": CLINIC_A, "role": "dentist"}
+        ).json()
+        dentist = {
+            "Authorization": f"Bearer {dentist_tok['access_token']}",
+            "X-Demo-Clinic": CLINIC_A,
+        }
+        owner = _headers(client, "clinic_owner", CLINIC_A)
+
+        pat = client.post(
+            "/api/v1/patients",
+            headers=dentist,
+            json={"display_name": "BN Đồng thời Audit", "birth_year": 1992},
+        ).json()["id"]
+        enc = client.post(
+            "/api/v1/encounters",
+            headers=dentist,
+            json={"patient_id": pat, "practitioner_id": dentist_tok["staff_id"]},
+        ).json()["id"]
+
+        urls = [
+            f"/api/v1/encounters/{enc}/notes",
+            f"/api/v1/encounters/{enc}/snapshots",
+        ] * 8
+
+        def _fetch(path: str) -> int:
+            return client.get(path, headers=dentist).status_code
+
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            statuses = list(pool.map(_fetch, urls))
+
+        assert statuses == [200] * len(urls)
+        ver = client.get("/api/v1/audit-events/verify-chain", headers=owner)
+        assert ver.status_code == 200, ver.text
+        assert ver.json()["chain_intact"] is True

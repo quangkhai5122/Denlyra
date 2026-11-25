@@ -82,6 +82,9 @@ export default function ClinicWorkspacePage() {
       reason_demo: string;
     }>
   >([]);
+  const [checkins, setCheckins] = useState<
+    Array<{ id: string; appointment_id: string; status: string }>
+  >([]);
   const [encounters, setEncounters] = useState<
     Array<{ id: string; patient_id: string; practitioner_id: string; status: string; created_at: string }>
   >([]);
@@ -288,8 +291,12 @@ export default function ClinicWorkspacePage() {
     }
 
     if (activeRole === "receptionist" || activeRole === "dentist" || activeRole === "treatment_coordinator") {
-      const apptRes = await client.listAppointments();
+      const [apptRes, chkRes] = await Promise.all([
+        client.listAppointments(),
+        client.listCheckins(),
+      ]);
       if (apptRes.ok) setAppointments(apptRes.data);
+      if (chkRes.ok) setCheckins(chkRes.data);
     }
 
     if (activeRole === "dentist") {
@@ -974,6 +981,7 @@ export default function ClinicWorkspacePage() {
                         const patName =
                           patients.find((p) => p.id === appt.patient_id)?.display_name ??
                           appt.patient_id.slice(0, 8);
+                        const checkinRec = checkins.find((c) => c.appointment_id === appt.id);
                         return (
                           <div
                             key={appt.id}
@@ -985,30 +993,38 @@ export default function ClinicWorkspacePage() {
                             <div>BN: {patName}</div>
                             <div className="muted">
                               {appt.reason_demo} · Trạng thái: <strong>{appt.status}</strong>
+                              {checkinRec && (
+                                <>
+                                  {" "}
+                                  · <span className="badge badge-ok">Đã check-in ({checkinRec.status})</span>
+                                </>
+                              )}
                             </div>
                             {appt.status === "confirmed" && (
                               <div style={{ marginTop: 6, display: "flex", gap: 6, flexWrap: "wrap" }}>
-                                <button
-                                  type="button"
-                                  className="btn-secondary"
-                                  onClick={async () => {
-                                    setConflictMsg("");
-                                    const r = await client.createCheckin({
-                                      appointment_id: appt.id,
-                                      identity_verified: true,
-                                      verification_method: "photo_id_checked",
-                                    });
-                                    if (!r.ok) handleApiFailure(r.status, r.detail, r.conflict);
-                                    else {
-                                      setStatusMsg(
-                                        "Đã xác minh định danh & đưa bệnh nhân vào hàng đợi phòng chờ (PAT-009 / SCH-010).",
-                                      );
-                                      await reloadWorkspaceData();
-                                    }
-                                  }}
-                                >
-                                  Check-in (Đã đối chiếu giấy tờ)
-                                </button>
+                                {!checkinRec && (
+                                  <button
+                                    type="button"
+                                    className="btn-secondary"
+                                    onClick={async () => {
+                                      setConflictMsg("");
+                                      const r = await client.createCheckin({
+                                        appointment_id: appt.id,
+                                        identity_verified: true,
+                                        verification_method: "photo_id_checked",
+                                      });
+                                      if (!r.ok) handleApiFailure(r.status, r.detail, r.conflict);
+                                      else {
+                                        setStatusMsg(
+                                          "Đã xác minh định danh & đưa bệnh nhân vào hàng đợi phòng chờ (PAT-009 / SCH-010).",
+                                        );
+                                        await reloadWorkspaceData();
+                                      }
+                                    }}
+                                  >
+                                    Check-in (Đã đối chiếu giấy tờ)
+                                  </button>
+                                )}
                                 <button
                                   type="button"
                                   className="btn-danger"
@@ -1213,6 +1229,26 @@ export default function ClinicWorkspacePage() {
                         </div>
                       )}
                     </div>
+                    {(s.status === "ready_for_signature" || s.status === "pending_signature") && (
+                      <button
+                        type="button"
+                        className="btn-secondary"
+                        onClick={async () => {
+                          setConflictMsg("");
+                          const sign = await client.signSnapshotSynthetic(s.id, {
+                            expected_sha256: s.canonical_sha256,
+                            mode: "synthetic_test_double",
+                          });
+                          if (!sign.ok) return handleApiFailure(sign.status, sign.detail, sign.conflict);
+                          setStatusMsg(
+                            `Đã niêm phong phụ lục giả lập (synthetic_signed_NOT_legal) SHA-256 ${sign.data.canonical_sha256.slice(0, 12)}…`,
+                          );
+                          await reloadWorkspaceData();
+                        }}
+                      >
+                        Ký niêm phong phụ lục
+                      </button>
+                    )}
                     {s.status === "synthetic_signed_NOT_legal" && (
                       <button
                         type="button"

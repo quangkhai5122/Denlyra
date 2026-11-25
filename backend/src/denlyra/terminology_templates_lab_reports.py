@@ -502,7 +502,7 @@ def create_encrypted_scheduled_report_export(
             db, clinic_id, actor, data.owner_group_key
         )
     else:
-        kpi = governance_analytics.compute_kpi_lineage(db, clinic_id)
+        kpi = governance_analytics.compute_kpi_lineage_report(db, clinic_id)
         report_payload = {
             "clinic_id": clinic_id,
             "metrics": [

@@ -8,6 +8,7 @@ Research-grade **synthetic-only demonstrator**, version `0.1.0`.
 - **Not production, not approved EMR, not legally signed clinical records.**
 
 Single source of current status: this file. Detailed dated evidence:
+- [2026-11-25 Live browser E2E UI verification, concurrent audit-chain locking & KEK report alignment](sessions/2026-11-25_LIVE_E2E_UI_VERIFICATION.md)
 - [2026-11-25 T029/T030 Vietnam IaC guard, partner insurance, LoRA lift, plan attestation, Zalo/SMS/Email contracts & PostgreSQL 16 migration hardening](sessions/2026-11-25_T029_T030_IAC_INSURANCE_LORA_CHANNELS_PG_FIX.md)
 - [2026-11-25 T027/T028 sandbox provider contracts, load benchmark, OIDC sync, DICOM quarantine, speech consent & PHI release gates](sessions/2026-11-25_T027_T028_SANDBOX_CONTRACTS_DICOM_SPEECH_GATES.md)
 - [2026-11-25 T025/T026 terminology, specialty templates, lab billing, offline sync & scheduling AI](sessions/2026-11-25_T025_T026_TERMINOLOGY_LAB_SYNC_AI.md)
@@ -83,7 +84,8 @@ Windows, repository `.venv`, CPython 3.12.14; Node 24.11.1 / npm 11.6.2.
 
 | Check | Observed result |
 |---|---|
-| `./.venv/Scripts/python.exe -m pytest backend/tests -q` | **109 passed, 1 skipped** (live PG skipped locally without `DENLYRA_TEST_POSTGRES_URL`) |
+| `./.venv/Scripts/python.exe -m pytest backend/tests -q` | **110 passed, 1 skipped** (includes 8-worker concurrent `audit_event` hash-chain race test; live PG verified in CI Run `#45585785317`) |
+| Live Browser E2E (`http://127.0.0.1:3000`, `:8766`, `:8766/api/docs`) | Passed across all 5 role workspaces, `409` guards, addendum signing & `RPT-010` export (`0` HTTP 500, `0` unexpected 403) |
 | `python scripts/verify_audit_chain.py` | Passed; verified per-clinic SHA-256 `prev_hash -> entry_hash` chain |
 | `python scripts/run_dr_restore_drill.py` | Passed; isolated restore verified 2 encrypted objects (`v1`+`v2`) + 1 sealed snapshot, `rpo_lag_ms=0` |
 | `python scripts/run_ai_eval_harness.py` | Passed; 8/8 cases (`extraction=100%`, `injection_blocked=100%`) |
@@ -137,4 +139,4 @@ Windows, repository `.venv`, CPython 3.12.14; Node 24.11.1 / npm 11.6.2.
 3. **P1 external vendor sandbox credentials & DPAs** — execute Law `91/2025/QH15` data processing agreements before connecting live OIDC/MFA, Cloud KMS, CA/PKI e-signature, Zalo OA/ZNS, SMS Brandname, payment gateway, or Orthanc DICOM servers.
 
 ## Git and exact continuation
-Next session begins with `git status --short --branch`, `git log -2 --oneline`, `AGENTS.md`, this file, and [latest session report](sessions/2026-11-25_T029_T030_IAC_INSURANCE_LORA_CHANNELS_PG_FIX.md). Run `./.venv/Scripts/python.exe -m pytest backend/tests -q` and review `docs/clinical/NEEDS_CLINICAL_REVIEW.md` with clinical/legal stakeholders.
+Next session begins with `git status --short --branch`, `git log -2 --oneline`, `AGENTS.md`, this file, and [latest session report](sessions/2026-11-25_LIVE_E2E_UI_VERIFICATION.md). Run `./.venv/Scripts/python.exe -m pytest backend/tests -q` and review `docs/clinical/NEEDS_CLINICAL_REVIEW.md` with clinical/legal stakeholders.
